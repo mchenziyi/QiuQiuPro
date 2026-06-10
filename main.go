@@ -431,6 +431,7 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 // ========== 主程序 ==========
 
 func main() {
+	fmt.Println("🚀 球球 V2 启动中...")
 	apiKey := os.Getenv("DEEPSEEK_API_KEY")
 	if apiKey == "" {
 		fmt.Println("请设置环境变量 DEEPSEEK_API_KEY")
