@@ -1,0 +1,8 @@
+# 本地配置
+.reasonix/
+.idea/
+.codegraph/
+
+# 产物文件
+output/
+*.jsonl
