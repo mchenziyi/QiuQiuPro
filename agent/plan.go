@@ -68,11 +68,76 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 		return nil, fmt.Errorf("解析失败：%w\n原始内容：%s", err, content)
 	}
 
-	plan := &Plan{Goal: goal}
+		plan := &Plan{Goal: goal}
 	for _, s := range steps {
 		plan.Steps = append(plan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
 	}
 	return plan, nil
+}
+
+// ReviewPlan 让 LLM 自我审查 Plan 的质量
+// 如果发现问题，返回修正后的 Plan；如果没问题，Plan 保持不变
+func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
+	var stepsText []string
+	for _, s := range plan.Steps {
+		stepsText = append(stepsText, fmt.Sprintf("%d. %s", s.ID, s.Desc))
+	}
+
+	prompt := fmt.Sprintf(`你是一个项目规划评审专家。请检查以下 Plan 的质量。
+
+目标：%s
+
+现有步骤：
+%s
+
+检查要求：
+1. 是否有遗漏的关键步骤？
+2. 步骤顺序是否合理？
+3. 每步粒度是否合适？
+
+如果 Plan 没问题，只输出 "OK"。
+如果有问题，输出修正后的 JSON：[{"id":1,"desc":"步骤描述"}, ...]`, plan.Goal, strings.Join(stepsText, "\n"))
+
+	resp, err := a.client.CreateChatCompletion(ctx,
+		openai.ChatCompletionRequest{
+			Model: a.model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: "system", Content: "你是一个严格的规划评审专家，只输出 OK 或修正后的 JSON"},
+				{Role: "user", Content: prompt},
+			},
+		},
+	)
+	if err != nil {
+		return plan, nil
+	}
+
+	content := strings.TrimSpace(resp.Choices[0].Message.Content)
+	if content == "OK" {
+		fmt.Println("📋 Plan 审查通过")
+		return plan, nil
+	}
+
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	type stepJSON struct {
+		ID   int    `json:"id"`
+		Desc string `json:"desc"`
+	}
+	var steps []stepJSON
+	if err := json.Unmarshal([]byte(content), &steps); err != nil || len(steps) == 0 {
+		fmt.Println("⚠️  Plan 审查结果解析失败，使用原始 Plan")
+		return plan, nil
+	}
+
+	newPlan := &Plan{Goal: plan.Goal}
+	for _, s := range steps {
+		newPlan.Steps = append(newPlan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
+	}
+	fmt.Println("📋 Plan 已根据审查意见优化")
+	return newPlan, nil
 }
 
 // ExecutePlan 按顺序执行 Plan 中的每一步
