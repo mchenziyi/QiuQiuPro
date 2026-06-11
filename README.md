@@ -1,4 +1,4 @@
-# 🏀 QiuQiuPro — Agent 即插即用框架
+﻿# <img src="qiuqiu-icon.svg" width="32" height="32" style="vertical-align: middle;"> QiuQiuPro — Agent 即插即用框架
 
 > **从零手写 Agent 系统的实战产物。不是框架，不是 SDK，是一个你能完全读懂的 Agent。**
 >

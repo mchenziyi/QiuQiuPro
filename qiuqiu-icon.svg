@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <!-- 背景圆 -->
+  <circle cx="60" cy="60" r="58" fill="#FFF8E7" stroke="#E8D5B5" stroke-width="2"/>
+  <!-- 身体（蓬松毛球） -->
+  <ellipse cx="60" cy="72" rx="32" ry="22" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1.5"/>
+  <!-- 头部（圆脸） -->
+  <circle cx="60" cy="48" r="26" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1.5"/>
+  <!-- 左耳 -->
+  <ellipse cx="38" cy="32" rx="8" ry="12" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1.5" transform="rotate(-20 38 32)"/>
+  <ellipse cx="38" cy="32" rx="4" ry="7" fill="#FFE4C4" transform="rotate(-20 38 32)"/>
+  <!-- 右耳 -->
+  <ellipse cx="82" cy="32" rx="8" ry="12" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1.5" transform="rotate(20 82 32)"/>
+  <ellipse cx="82" cy="32" rx="4" ry="7" fill="#FFE4C4" transform="rotate(20 82 32)"/>
+  <!-- 左眼 -->
+  <circle cx="50" cy="45" r="5" fill="#333333"/>
+  <circle cx="50" cy="43" r="2" fill="#FFFFFF"/>
+  <!-- 右眼 -->
+  <circle cx="70" cy="45" r="5" fill="#333333"/>
+  <circle cx="70" cy="43" r="2" fill="#FFFFFF"/>
+  <!-- 鼻子 -->
+  <ellipse cx="60" cy="54" rx="4" ry="3" fill="#FFB6C1"/>
+  <!-- 嘴巴（微笑） -->
+  <path d="M54 58 Q60 64 66 58" fill="none" stroke="#333333" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- 腿部 -->
+  <rect x="42" y="85" width="10" height="16" rx="5" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1"/>
+  <rect x="68" y="85" width="10" height="16" rx="5" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1"/>
+  <!-- 尾巴（右侧小毛球） -->
+  <circle cx="90" cy="68" r="8" fill="#FFFFFF" stroke="#E0D0B0" stroke-width="1.5"/>
+</svg>
