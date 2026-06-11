@@ -1,4 +1,4 @@
-// 球球 Agent — 主入口
+﻿// 球球 Agent — 主入口
 // 功能：初始化 Agent、注册工具、加载 MCP、启动交互式对话
 package main
 
@@ -16,13 +16,42 @@ import (
 	"agentdemo/tool"
 )
 
-func main() {
-	// 从环境变量读取 API Key（不写死在代码里）
-	apiKey := os.Getenv("DEEPSEEK_API_KEY")
-	if apiKey == "" {
-		fmt.Println("请设置环境变量 DEEPSEEK_API_KEY")
-		return
+func getAPIKey() string {
+	// ① 优先从环境变量读取
+	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
+		return key
 	}
+
+	// ② 从本地配置文件读取（~/.qiuqiu/key）
+	home, _ := os.UserHomeDir()
+	keyFile := home + "/.qiuqiu/key"
+	if data, err := os.ReadFile(keyFile); err == nil {
+		key := strings.TrimSpace(string(data))
+		if key != "" {
+			return key
+		}
+	}
+
+	// ③ 都没有 -> 让用户在终端输入
+	fmt.Print("首次使用，请输入你的 DeepSeek API Key（输入后自动保存，下次不用再输）: ")
+	reader := bufio.NewReader(os.Stdin)
+	key, _ := reader.ReadString('\n')
+	key = strings.TrimSpace(key)
+	if key == "" {
+		fmt.Println("API Key 不能为空")
+		return getAPIKey() // 递归，让用户重新输入
+	}
+
+	// 保存到配置文件
+	os.MkdirAll(home+"/.qiuqiu", 0700)
+	os.WriteFile(keyFile, []byte(key), 0600)
+	fmt.Println("✅ API Key 已保存到", keyFile)
+	return key
+}
+
+func main() {
+	// 获取 API Key：环境变量 → 本地文件 → 用户输入
+	apiKey := getAPIKey()
 
 	// 初始化 Agent：传入 API Key 和模型名
 	a := agent.New(apiKey, "deepseek-chat")
