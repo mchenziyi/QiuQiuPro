@@ -153,7 +153,10 @@ func main() {
 			fmt.Printf("  %d. %s\n", s.ID, s.Desc)
 		}
 
-		// 按顺序执行每一步
+		// 让 LLM 自我审查 Plan 质量，有问题则自动修正
+		fmt.Println("\n🔍 正在审查计划质量...")
+		plan, _ = a.ReviewPlan(ctx, plan)
+
 		fmt.Println("\n🚀 开始执行...")
 		err = a.ExecutePlan(ctx, plan)
 		if err != nil {
