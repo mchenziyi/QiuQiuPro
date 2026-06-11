@@ -15,35 +15,41 @@ import (
 
 // Agent 核心结构
 type Agent struct {
-	client       *openai.Client
-	model        string
-	allTools     map[string]tool.Tool
-	activeTools  []string
-	messages     []openai.ChatCompletionMessage
-	store        *event.Store
-	session      string
-	currentSkill *skill.Skill
-	sysPrompt    string
-	cmdRegistry  *command.Registry
+	client        *openai.Client
+	model         string
+	allTools      map[string]tool.Tool
+	activeTools   []string
+	messages      []openai.ChatCompletionMessage
+	store         *event.Store
+	session       string
+	currentSkill  *skill.Skill
+	sysPrompt     string
+	cmdRegistry   *command.Registry
+	lastEventID   string
+	Quiet         bool       // true 时隐藏中间日志（🔧📦等）
+	toolCallCount int
 }
 
 const maxMessages = 100
+const checkpointInterval = 5
 
 func New(apiKey, model string) *Agent {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = "https://api.deepseek.com"
-	return &Agent{
+	a := &Agent{
 		client:   openai.NewClientWithConfig(config),
 		model:    model,
 		allTools: make(map[string]tool.Tool),
 		messages: make([]openai.ChatCompletionMessage, 0),
 		store:    event.NewStore(".reasonix/sessions"),
-		session:     fmt.Sprintf("session_%d", time.Now().Unix()),
+		session:  fmt.Sprintf("session_%d", time.Now().Unix()),
 		cmdRegistry: command.NewRegistry(),
 	}
+	a.RestoreFromCheckpoint()
+	return a
 }
 
-func (a *Agent) RegisterTool(t tool.Tool)     { a.allTools[t.Name] = t }
+func (a *Agent) RegisterTool(t tool.Tool)       { a.allTools[t.Name] = t }
 func (a *Agent) RegisterTools(tools []tool.Tool) {
 	for _, t := range tools { a.RegisterTool(t) }
 }
@@ -104,8 +110,6 @@ func (a *Agent) toolDefinitions() []openai.Tool {
 	return tools
 }
 
-// highRiskTools 定义需要用户确认的高危工具
-// 这些工具会修改文件或执行命令，LLM 可能误用
 var highRiskTools = map[string]bool{
 	"write_file":      true,
 	"edit_file_block": true,
@@ -113,12 +117,39 @@ var highRiskTools = map[string]bool{
 	"run_powershell":  true,
 }
 
-// IsHighRiskTool 判断工具是否高危
 func IsHighRiskTool(name string) bool {
 	return highRiskTools[name]
 }
 
 func (a *Agent) CommandRegistry() *command.Registry { return a.cmdRegistry }
-func (a *Agent) SessionID() string            { return a.session }
-func (a *Agent) EventStore() *event.Store      { return a.store }
-func (a *Agent) TrimMessages()                 { a.trimMessages() }
+func (a *Agent) SessionID() string                  { return a.session }
+func (a *Agent) EventStore() *event.Store           { return a.store }
+func (a *Agent) TrimMessages()                      { a.trimMessages() }
+
+// SaveCheckpoint 保存当前状态快照
+func (a *Agent) debugf(format string, args ...interface{}) {
+	if !a.Quiet {
+		fmt.Printf(format, args...)
+	}
+}
+
+func (a *Agent) SaveCheckpoint() {
+	data, _ := json.Marshal(a.messages)
+	a.store.SaveCheckpoint(a.session, a.lastEventID, string(data))
+}
+
+// RestoreFromCheckpoint 从快照恢复状态
+func (a *Agent) RestoreFromCheckpoint() bool {
+	cp, err := a.store.LoadCheckpoint(a.session)
+	if err != nil || cp == nil {
+		return false
+	}
+	var msgs []openai.ChatCompletionMessage
+	if err := json.Unmarshal([]byte(cp.MessagesJSON), &msgs); err != nil {
+		return false
+	}
+	a.messages = msgs
+	a.lastEventID = cp.LastEventID
+	fmt.Printf("  💾 从快照恢复 %d 条消息\n", len(msgs))
+	return true
+}

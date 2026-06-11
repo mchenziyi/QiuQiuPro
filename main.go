@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"flag"
 
 	"agentdemo/agent"
 	"agentdemo/command"
@@ -69,9 +70,13 @@ func loadMCPConfigs() []MCPConfig {
 }
 
 func main() {
+	quiet := flag.Bool("q", false, "安静模式，减少中间日志")
+	flag.Parse()
+
 	apiKey := getAPIKey()
 	a := agent.New(apiKey, "deepseek-chat")
 	a.RegisterTools(tool.AllBuiltInTools())
+	a.Quiet = *quiet
 	ctx := context.Background()
 
 	// ========== 加载 MCP 插件 ==========

@@ -27,6 +27,7 @@ func (a *Agent) recordEvent(eventType, content, toolName string) {
 		Timestamp: time.Now(),
 	}
 	a.store.Append(a.session, e)
+	a.lastEventID = e.ID
 }
 
 // truncate 截断字符串用于日志显示

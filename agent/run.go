@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -8,7 +8,6 @@ import (
 )
 
 // Run 处理一轮用户输入——Agent 核心循环
-// 流程：构建消息 → 调 LLM → 有 ToolCall 就执行 → 结果喂回 → 再调 LLM → 直到 LLM 直接回答
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.recordEvent("user", userInput, "")
 
@@ -43,8 +42,9 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 		reqMessages = append(reqMessages, msg)
 
-		// 没 ToolCall → 任务完成
+		// 没 ToolCall → 任务完成（保存 Checkpoint）
 		if len(msg.ToolCalls) == 0 {
+			a.SaveCheckpoint()
 			a.messages = append(a.messages, openai.ChatCompletionMessage{
 				Role: "user", Content: userInput,
 			})
@@ -55,7 +55,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		// 有 ToolCall → 依次执行
 		for _, tc := range msg.ToolCalls {
 			a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
-			fmt.Printf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+			a.debugf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
 
 			tool, ok := a.allTools[tc.Function.Name]
 			if !ok {
@@ -64,7 +64,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 			// 高危工具：执行前让用户确认
 			if IsHighRiskTool(tc.Function.Name) {
-				fmt.Printf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+				a.debugf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
 				fmt.Print("  确认执行？[Y/n] ")
 				var confirm string
 				fmt.Scanln(&confirm)
@@ -81,7 +81,13 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 			result := tool.Execute(tc.Function.Arguments)
 			a.recordEvent("tool_result", result, tc.Function.Name)
-			fmt.Printf("  📦 %s\n", truncate(result, 100))
+			a.debugf("  📦 %s\n", truncate(result, 100))
+
+			// 每 N 次工具调用保存 Checkpoint
+			a.toolCallCount++
+			if a.toolCallCount%checkpointInterval == 0 {
+				a.SaveCheckpoint()
+			}
 
 			reqMessages = append(reqMessages, openai.ChatCompletionMessage{
 				Role: "tool", Content: result, ToolCallID: tc.ID,
@@ -89,6 +95,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 	}
 
+	a.SaveCheckpoint()
 	a.messages = append(a.messages, openai.ChatCompletionMessage{
 		Role: "user", Content: userInput,
 	})

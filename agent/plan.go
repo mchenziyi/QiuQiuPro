@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -146,7 +146,7 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 	for i := 0; i < len(plan.Steps); i++ {
 		step := &plan.Steps[i]
 		step.Status = "running"
-		fmt.Printf("\n  📋 [%d/%d] %s\n", i+1, len(plan.Steps), step.Desc)
+		a.debugf("\n  📋 [%d/%d] %s\n", i+1, len(plan.Steps), step.Desc)
 		_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", step.Desc))
 		if err != nil {
 			step.Status = "failed"
@@ -160,11 +160,11 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 
 			// 保留已完成步骤 + 当前失败步骤，替换后续步骤为新方案
 			plan.Steps = append(plan.Steps[:i+1], newPlan.Steps...)
-			fmt.Printf("  🔄 已重新规划剩余步骤（新方案共 %d 步）\n", len(newPlan.Steps))
+			a.debugf("  🔄 已重新规划剩余步骤（新方案共 %d 步）\n", len(newPlan.Steps))
 			continue
 		}
 		step.Status = "done"
-		fmt.Printf("  ✅ [%d/%d] 完成\n", i+1, len(plan.Steps))
+		a.debugf("  ✅ [%d/%d] 完成\n", i+1, len(plan.Steps))
 	}
 	return nil
 }
