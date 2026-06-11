@@ -17,7 +17,7 @@ func AllBuiltInTools() []Tool {
 		NewListDirectoryTool(),
 		NewCountFileCharsTool(),
 		NewEditFileBlockTool(),
-		NewSearchFilesTool(),
+		NewSearchFilesTool(), NewGlobTool(), NewGrepTool(),
 		NewGitCommitTool(),
 		NewRunPowerShellTool(),
 		NewRunShellTool(),

@@ -1,4 +1,4 @@
-// Package skill 定义 Agent 的专业能力包
+﻿// Package skill 定义 Agent 的专业能力包
 package skill
 
 import (
@@ -36,7 +36,7 @@ func Architect() Skill {
 2. 提出至少 2 种方案并比较优劣
 3. 输出架构决策记录（ADR）
 4. 确认方案后再开始实施`,
-		ToolWhitelist: []string{"read_file", "list_directory", "count_file_chars"},
+		ToolWhitelist: []string{"read_file", "list_directory", "count_file_chars", "glob"},
 		Rules: []Rule{
 			{Name: "必须有 ADR", Description: "每次架构决策必须记录原因和备选方案"},
 			{Name: "方案比较", Description: "至少提出 2 种方案并列出优劣"},
@@ -53,7 +53,7 @@ func CodeReview() Skill {
 1. 列出每个问题的严重级别（Critical / Major / Minor）
 2. 对每个问题给出修改建议
 3. 先分析影响范围，再给出修改方案`,
-		ToolWhitelist: []string{"read_file", "list_directory", "run_shell", "run_powershell", "edit_file_block"},
+		ToolWhitelist: []string{"read_file", "list_directory", "run_shell", "run_powershell", "edit_file_block", "glob", "grep"},
 		Rules: []Rule{
 			{Name: "严重级别", Description: "每个问题必须标记 Critical/Major/Minor"},
 			{Name: "影响分析", Description: "改之前必须分析影响范围"},
@@ -71,7 +71,7 @@ func Frontend() Skill {
 2. 考虑可访问性（a11y）
 3. 考虑响应式布局
 4. 输出组件树和状态管理方案`,
-		ToolWhitelist: []string{"read_file", "list_directory", "write_file"},
+		ToolWhitelist: []string{"read_file", "list_directory", "write_file", "glob", "grep"},
 		Rules: []Rule{
 			{Name: "可访问性", Description: "每个组件必须考虑 aria 标签和键盘导航"},
 			{Name: "响应式", Description: "设计必须适配移动端和桌面端"},
