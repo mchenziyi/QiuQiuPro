@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"encoding/json"
@@ -99,6 +99,20 @@ func (a *Agent) toolDefinitions() []openai.Tool {
 		})
 	}
 	return tools
+}
+
+// highRiskTools 定义需要用户确认的高危工具
+// 这些工具会修改文件或执行命令，LLM 可能误用
+var highRiskTools = map[string]bool{
+	"write_file":      true,
+	"edit_file_block": true,
+	"run_shell":       true,
+	"run_powershell":  true,
+}
+
+// IsHighRiskTool 判断工具是否高危
+func IsHighRiskTool(name string) bool {
+	return highRiskTools[name]
 }
 
 func (a *Agent) SessionID() string            { return a.session }
