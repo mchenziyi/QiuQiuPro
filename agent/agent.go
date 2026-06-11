@@ -1,6 +1,7 @@
 ﻿package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -153,3 +154,19 @@ func (a *Agent) RestoreFromCheckpoint() bool {
 	fmt.Printf("  💾 从快照恢复 %d 条消息\n", len(msgs))
 	return true
 }
+
+// SpawnSubAgent 创建一个子 Agent，共享 LLM 客户端和工具，但有独立的对话历史
+// 子 Agent 用于执行独立的子任务（如查文档、写测试），不干扰主 Agent 的上下文
+func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) {
+	sub := &Agent{
+		client:   a.client,
+		model:    a.model,
+		allTools: a.allTools,
+		messages: make([]openai.ChatCompletionMessage, 0),
+		store:    a.store,
+		session:  fmt.Sprintf("%s_sub_%d", a.session, time.Now().UnixNano()),
+		Quiet:    a.Quiet,
+	}
+	return sub.Run(ctx, task)
+}
+

@@ -139,6 +139,24 @@ func main() {
 		},
 	})
 
+	// /subagent <task> — 派生子 Agent 执行独立任务
+	registry.Register(command.Command{
+		Name: "subagent", Description: "派生子 Agent 执行独立任务。用法：/subagent <任务描述>",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Println("❌ 请指定子任务，如：/subagent 查一下 strings.Builder 的用法")
+				return true
+			}
+			fmt.Printf("  🧩 派生子 Agent 执行：%s\n", args)
+			result, err := a.SpawnSubAgent(ctx, args)
+			if err != nil {
+				fmt.Printf("  ❌ 子 Agent 执行失败：%v\n", err)
+			} else {
+				fmt.Printf("  🧩 子 Agent 返回：%s\n", result)
+			}
+			return true
+		},
+	})
 	// /replay — 回放事件日志
 	registry.Register(command.Command{
 		Name: "replay", Description: "回放当前会话的事件日志",
