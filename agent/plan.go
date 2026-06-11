@@ -1,8 +1,8 @@
-﻿package agent
+package agent
 
 import (
-	"encoding/json"
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -68,7 +68,7 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 		return nil, fmt.Errorf("解析失败：%w\n原始内容：%s", err, content)
 	}
 
-		plan := &Plan{Goal: goal}
+	plan := &Plan{Goal: goal}
 	for _, s := range steps {
 		plan.Steps = append(plan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
 	}
@@ -113,7 +113,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 
 	content := strings.TrimSpace(resp.Choices[0].Message.Content)
 	if content == "OK" {
-		fmt.Println("📋 Plan 审查通过")
+		fmt.Println("  📋 Plan 审查通过")
 		return plan, nil
 	}
 
@@ -128,7 +128,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	}
 	var steps []stepJSON
 	if err := json.Unmarshal([]byte(content), &steps); err != nil || len(steps) == 0 {
-		fmt.Println("⚠️  Plan 审查结果解析失败，使用原始 Plan")
+		fmt.Println("  ⚠️  Plan 审查结果解析失败，使用原始 Plan")
 		return plan, nil
 	}
 
@@ -136,24 +136,104 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	for _, s := range steps {
 		newPlan.Steps = append(newPlan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
 	}
-	fmt.Println("📋 Plan 已根据审查意见优化")
+	fmt.Println("  📋 Plan 已根据审查意见优化")
 	return newPlan, nil
 }
 
 // ExecutePlan 按顺序执行 Plan 中的每一步
+// 某步失败时自动触发重规划（RePlan），不中断整体执行
 func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
-	total := len(plan.Steps)
-	for i := range plan.Steps {
+	for i := 0; i < len(plan.Steps); i++ {
 		step := &plan.Steps[i]
 		step.Status = "running"
-		fmt.Printf("\n📋 [%d/%d] %s\n", i+1, total, step.Desc)
+		fmt.Printf("\n  📋 [%d/%d] %s\n", i+1, len(plan.Steps), step.Desc)
 		_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", step.Desc))
 		if err != nil {
 			step.Status = "failed"
-			return fmt.Errorf("第 %d 步失败：%w", step.ID, err)
+			fmt.Printf("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
+
+			// 让 LLM 重新规划剩余步骤
+			newPlan, replanErr := a.RePlan(ctx, plan, i)
+			if replanErr != nil {
+				return fmt.Errorf("第 %d 步失败：%w（重规划也失败：%v）", step.ID, err, replanErr)
+			}
+
+			// 保留已完成步骤 + 当前失败步骤，替换后续步骤为新方案
+			plan.Steps = append(plan.Steps[:i+1], newPlan.Steps...)
+			fmt.Printf("  🔄 已重新规划剩余步骤（新方案共 %d 步）\n", len(newPlan.Steps))
+			continue
 		}
 		step.Status = "done"
-		fmt.Printf("✅ [%d/%d] 完成\n", i+1, total)
+		fmt.Printf("  ✅ [%d/%d] 完成\n", i+1, len(plan.Steps))
 	}
 	return nil
+}
+
+// RePlan 让 LLM 根据已完成和失败的步骤，重新规划后续方案
+func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int) (*Plan, error) {
+	var doneText []string
+	for i := 0; i < failedIndex; i++ {
+		doneText = append(doneText, fmt.Sprintf("✅ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
+	}
+	var remainingText []string
+	for i := failedIndex; i < len(plan.Steps); i++ {
+		remainingText = append(remainingText, fmt.Sprintf("❌ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
+	}
+
+	prompt := fmt.Sprintf(`你是一个项目规划专家。执行过程中某步失败了，请重新规划后续步骤。
+
+总目标：%s
+
+已完成：
+%s
+
+失败/未完成的步骤：
+%s
+
+请根据已完成的内容，重新规划剩余步骤。要求：
+- 每步是 LLM 一次能处理的粒度
+- 按执行顺序排列
+- 每步不超过 15 字
+- 步骤数不超过 8 步
+
+只输出 JSON，格式：[{"id":1,"desc":"步骤描述"}, ...]`,
+		plan.Goal, strings.Join(doneText, "\n"), strings.Join(remainingText, "\n"))
+
+	resp, err := a.client.CreateChatCompletion(ctx,
+		openai.ChatCompletionRequest{
+			Model: a.model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: "system", Content: "你是一个严谨的项目规划专家，只输出 JSON"},
+				{Role: "user", Content: prompt},
+			},
+		},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("重规划失败：%w", err)
+	}
+
+	content := resp.Choices[0].Message.Content
+	content = strings.TrimSpace(content)
+	content = strings.TrimPrefix(content, "```json")
+	content = strings.TrimPrefix(content, "```")
+	content = strings.TrimSuffix(content, "```")
+	content = strings.TrimSpace(content)
+
+	type stepJSON struct {
+		ID   int    `json:"id"`
+		Desc string `json:"desc"`
+	}
+	var steps []stepJSON
+	if err := json.Unmarshal([]byte(content), &steps); err != nil {
+		return nil, fmt.Errorf("解析重规划结果失败：%w\n原始：%s", err, content)
+	}
+	if len(steps) == 0 {
+		return nil, fmt.Errorf("重规划结果为空")
+	}
+
+	newPlan := &Plan{Goal: plan.Goal}
+	for _, s := range steps {
+		newPlan.Steps = append(newPlan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
+	}
+	return newPlan, nil
 }
