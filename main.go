@@ -1,5 +1,4 @@
 ﻿// 球球 Agent — 主入口
-// 功能：初始化 Agent、加载 MCP 配置、加载 Skill、启动交互式对话
 package main
 
 import (
@@ -8,17 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	
 	"strings"
 
 	"agentdemo/agent"
+	"agentdemo/command"
 	"agentdemo/event"
 	"agentdemo/mcp"
 	"agentdemo/skill"
 	"agentdemo/tool"
 )
 
-// MCPConfig 对应 .qiuqiu/mcp_servers.json 中的一条配置
 type MCPConfig struct {
 	Name    string   `json:"name"`
 	Command string   `json:"command"`
@@ -51,11 +49,9 @@ func getAPIKey() string {
 	return key
 }
 
-// loadMCPConfigs 从配置文件读取 MCP Server 列表
 func loadMCPConfigs() []MCPConfig {
 	home, _ := os.UserHomeDir()
 	configFile := home + "/.qiuqiu/mcp_servers.json"
-
 	data, err := os.ReadFile(configFile)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -64,7 +60,6 @@ func loadMCPConfigs() []MCPConfig {
 		fmt.Printf("  ⚠️  读取 MCP 配置失败：%v\n", err)
 		return nil
 	}
-
 	var configs []MCPConfig
 	if err := json.Unmarshal(data, &configs); err != nil {
 		fmt.Printf("  ⚠️  解析 MCP 配置失败：%v\n", err)
@@ -75,14 +70,11 @@ func loadMCPConfigs() []MCPConfig {
 
 func main() {
 	apiKey := getAPIKey()
-
-	// 初始化 Agent
 	a := agent.New(apiKey, "deepseek-chat")
 	a.RegisterTools(tool.AllBuiltInTools())
-
 	ctx := context.Background()
 
-	// ========== 加载 MCP 插件（从配置文件）==========
+	// ========== 加载 MCP 插件 ==========
 	fmt.Println("\n🔌 正在加载 MCP 插件...")
 	configs := loadMCPConfigs()
 	if len(configs) == 0 {
@@ -103,15 +95,14 @@ func main() {
 		fmt.Printf("  ✅ [%s] 已加载 %d 个工具\n", mc.Name, len(tools))
 	}
 
-	// ========== 加载 Skill（内置 + 外部）==========
+	// ========== 加载 Skill ==========
 	home, _ := os.UserHomeDir()
 	skillsDir := home + "/.qiuqiu/skills"
-
 	allSkills := skill.AllBuiltInSkills()
 	externalSkills, _ := skill.LoadFromDir(skillsDir)
 	allSkills = append(allSkills, externalSkills...)
 
-	fmt.Println("\n🎯 可用 Skill（输入 use <技能名> 切换）：")
+	fmt.Println("\n🎯 可用 Skill（输入 /use <技能名> 切换）：")
 	for _, s := range allSkills {
 		origin := "内置"
 		found := false
@@ -127,10 +118,101 @@ func main() {
 		fmt.Printf("  - %s [%s]：%s\n", s.Name, origin, s.Description)
 	}
 
-	fmt.Printf("\n🤖 球球 Agent 已启动 | 当前模式：[%s]（输入 exit 退出，replay 重放历史）\n", a.CurrentSkillName())
+	// ========== 注册命令 ==========
+	registry := a.CommandRegistry()
+
+	// /help — 列出所有命令
+	registry.Register(command.Command{
+		Name: "help", Description: "显示所有可用命令",
+		Handler: func(args string) bool {
+			fmt.Println("\n📖 可用命令：")
+			for _, c := range registry.List() {
+				fmt.Printf("  /%-10s — %s\n", c.Name, c.Description)
+			}
+			fmt.Println()
+			return true
+		},
+	})
+
+	// /replay — 回放事件日志
+	registry.Register(command.Command{
+		Name: "replay", Description: "回放当前会话的事件日志",
+		Handler: func(args string) bool {
+			events, err := a.EventStore().Load(a.SessionID())
+			if err != nil {
+				fmt.Printf("❌ 读取失败：%v\n", err)
+			} else {
+				fmt.Println(event.Replay(a.SessionID(), events))
+			}
+			return true
+		},
+	})
+
+	// /explain <file> — 解释文件内容
+	registry.Register(command.Command{
+		Name: "explain", Description: "解释指定文件内容。用法：/explain <文件路径>",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Println("❌ 请指定文件路径，如：/explain main.go")
+				return true
+			}
+			fmt.Printf("📖 正在解释 %s ...\n", args)
+			answer, err := a.Run(ctx, fmt.Sprintf("请解释文件 %s 的内容和作用", args))
+			if err != nil {
+				fmt.Printf("❌ 解释失败：%v\n", err)
+			} else {
+				fmt.Printf("📖 %s\n", answer)
+			}
+			return true
+		},
+	})
+
+	// /test — 运行测试
+	registry.Register(command.Command{
+		Name: "test", Description: "运行当前项目的测试。用法：/test [包路径]",
+		Handler: func(args string) bool {
+			target := "."
+			if args != "" {
+				target = args
+			}
+			fmt.Printf("🧪 正在运行测试 %s ...\n", target)
+			answer, err := a.Run(ctx, fmt.Sprintf("请运行 %s 目录下的测试，如果失败则分析原因并修复", target))
+			if err != nil {
+				fmt.Printf("❌ 测试失败：%v\n", err)
+			} else {
+				fmt.Printf("🧪 %s\n", answer)
+			}
+			return true
+		},
+	})
+
+	// /use <skill> — 切换 Skill
+	registry.Register(command.Command{
+		Name: "use", Description: "切换 Skill（专业模式）。用法：/use <技能名>",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Println("❌ 请指定 Skill 名，如：/use architect")
+				fmt.Println("可用 Skill：")
+				for _, s := range allSkills {
+					fmt.Printf("  - %s：%s\n", s.Name, s.Description)
+				}
+				return true
+			}
+			for _, s := range allSkills {
+				if s.Name == args {
+					a.ApplySkill(s)
+					return true
+				}
+			}
+			fmt.Printf("❌ 未找到 Skill：%s（输入 /use 查看所有可用 Skill）\n", args)
+			return true
+		},
+	})
+
+	fmt.Printf("\n🤖 球球 Agent 已启动 | 当前模式：[%s]（输入 /help 查看所有命令）\n", a.CurrentSkillName())
 	fmt.Println(strings.Repeat("─", 50))
 
-	// 交互式对话循环
+	// ========== 交互式对话循环 ==========
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		fmt.Print("\n🧑 你: ")
@@ -141,51 +223,25 @@ func main() {
 		if input == "" {
 			continue
 		}
+
+		// 先尝试匹配命令（以 / 开头）
+		if registry.Handle(input) {
+			continue
+		}
+
+		// 旧命令兼容：exit 直接在 main 处理
 		if input == "exit" || input == "quit" {
 			fmt.Println("👋 再见！")
 			break
 		}
 
-		if input == "replay" {
-			events, err := a.EventStore().Load(a.SessionID())
-			if err != nil {
-				fmt.Printf("❌ 读取失败：%v\n", err)
-			} else {
-				fmt.Println(event.Replay(a.SessionID(), events))
-			}
-			continue
-		}
-
-		if strings.HasPrefix(input, "use ") {
-			name := strings.TrimPrefix(input, "use ")
-			matched := false
-			for _, s := range allSkills {
-				if s.Name == name {
-					a.ApplySkill(s)
-					matched = true
-					break
-				}
-			}
-			if !matched {
-				fmt.Printf("❌ 未找到 Skill：%s（可用：", name)
-				for i, s := range allSkills {
-					if i > 0 {
-						fmt.Print("、")
-					}
-					fmt.Print(s.Name)
-				}
-				fmt.Println("）")
-			}
-			continue
-		}
-
+		// 正常流程：规划 → 执行
 		fmt.Println("📋 正在拆解计划...")
 		plan, err := a.GeneratePlan(ctx, input)
 		if err != nil {
 			fmt.Printf("❌ 规划失败：%v\n", err)
 			continue
 		}
-
 		fmt.Println("📋 计划如下：")
 		for _, s := range plan.Steps {
 			fmt.Printf("  %d. %s\n", s.ID, s.Desc)

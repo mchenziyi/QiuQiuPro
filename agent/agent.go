@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"encoding/json"
@@ -7,6 +7,7 @@ import (
 
 	openai "github.com/sashabaranov/go-openai"
 
+	"agentdemo/command"
 	"agentdemo/event"
 	"agentdemo/skill"
 	"agentdemo/tool"
@@ -23,6 +24,7 @@ type Agent struct {
 	session      string
 	currentSkill *skill.Skill
 	sysPrompt    string
+	cmdRegistry  *command.Registry
 }
 
 const maxMessages = 100
@@ -36,7 +38,8 @@ func New(apiKey, model string) *Agent {
 		allTools: make(map[string]tool.Tool),
 		messages: make([]openai.ChatCompletionMessage, 0),
 		store:    event.NewStore(".reasonix/sessions"),
-		session:  fmt.Sprintf("session_%d", time.Now().Unix()),
+		session:     fmt.Sprintf("session_%d", time.Now().Unix()),
+		cmdRegistry: command.NewRegistry(),
 	}
 }
 
@@ -115,6 +118,7 @@ func IsHighRiskTool(name string) bool {
 	return highRiskTools[name]
 }
 
+func (a *Agent) CommandRegistry() *command.Registry { return a.cmdRegistry }
 func (a *Agent) SessionID() string            { return a.session }
 func (a *Agent) EventStore() *event.Store      { return a.store }
 func (a *Agent) TrimMessages()                 { a.trimMessages() }
