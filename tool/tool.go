@@ -189,7 +189,7 @@ func NewGitCommitTool() Tool {
 // 描述里注明"优先用其他专用工具"，引导 LLM 选更精确的工具
 func NewRunShellTool() Tool {
 	return Tool{
-		Name: "run_shell", Description: "执行一条 Windows cmd 命令。优先用其他专用工具",
+		Name: "run_shell", Description: "【不推荐】执行一条 Windows cmd 命令。优先用 run_powershell，cmd 引号问题多",
 		Parameters: map[string]any{
 			"type": "object", "properties": map[string]any{
 				"command": map[string]any{"type": "string", "description": "要执行的 cmd 命令"},
@@ -347,6 +347,27 @@ func searchFileContent(root, keyword string) string {
 	return b.String()
 }
 
+// NewRunPowerShellTool 创建"执行 PowerShell 命令"工具
+// 当前系统是 Windows，PowerShell 比 cmd 更强大、语法更接近 Linux shell
+func NewRunPowerShellTool() Tool {
+	return Tool{
+		Name: "run_powershell", Description: "执行一条 PowerShell 命令。当前系统是 Windows，优先用这个而不是 run_shell",
+		Parameters: map[string]any{
+			"type": "object", "properties": map[string]any{
+				"command": map[string]any{"type": "string", "description": "要执行的 PowerShell 命令"},
+			}, "required": []string{"command"},
+		},
+		Execute: func(args string) string {
+			var p struct{ Command string }
+			json.Unmarshal([]byte(args), &p)
+			out, err := exec.Command("powershell", "-NoProfile", "-Command", p.Command).CombinedOutput()
+			if err != nil {
+				return fmt.Sprintf("命令失败：%v\n输出：%s", err, string(out))
+			}
+			return fmt.Sprintf("输出：\n%s", string(out))
+		},
+	}
+}
 // AllBuiltInTools 返回所有内置工具列表
 // 在 main.go 中调用此函数一次性注册所有工具
 func AllBuiltInTools() []Tool {
@@ -358,6 +379,7 @@ func AllBuiltInTools() []Tool {
 		NewGitCommitTool(),
 		NewCountFileCharsTool(),
 		NewSearchFilesTool(),
+		NewRunPowerShellTool(),
 		NewRunShellTool(),
 	}
 }
