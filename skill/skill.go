@@ -1,28 +1,31 @@
 // Package skill 定义 Agent 的专业能力包
-// Skill = SystemPrompt + ToolWhitelist + Rules
-// 不是插件（MCP 才是），是 Agent 的"行为模式配置"
 package skill
 
-// Rule 定义一条行为规则，约束 Agent 在特定 Skill 下的行为
-type Rule struct {
-	Name        string // 规则名，如"必须有 ADR"
-	Description string // 规则说明，如"每次架构决策必须记录原因和备选方案"
-}
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+)
 
 // Skill 定义 Agent 的一种专业行为模式
-// 切换 Skill 不重启进程，不改代码，只换一套 SystemPrompt 和工具白名单
 type Skill struct {
-	Name         string   // 技能名，用户通过 use <name> 切换
-	Description  string   // 一句话说明，提示用户这个模式是做什么的
-	SystemPrompt string   // 专业提示词，LLM 的行为核心（决定了 Agent 的"人格"）
-	ToolWhitelist []string // 该 Skill 能用的工具名列表（空 = 全部可用）
-	Rules        []Rule   // 行为规则列表
+	Name         string   `json:"name"`          // 技能名
+	Description  string   `json:"description"`    // 一句话说明
+	SystemPrompt string   `json:"system_prompt"`  // 专业提示词
+	ToolWhitelist []string `json:"tool_whitelist"` // 可用工具名列表（空=全部）
+	Rules        []Rule   `json:"rules"`          // 行为规则
+}
+
+// Rule 定义一条行为规则
+type Rule struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
 }
 
 // ========== 内置 Skill ==========
 
-// Architect 架构师模式：注重分析、设计文档、方案对比
-// 适用场景：系统设计、技术选型、架构评审
 func Architect() Skill {
 	return Skill{
 		Name:        "architect",
@@ -33,7 +36,7 @@ func Architect() Skill {
 2. 提出至少 2 种方案并比较优劣
 3. 输出架构决策记录（ADR）
 4. 确认方案后再开始实施`,
-		ToolWhitelist: []string{"read_file", "list_directory", "count_file_chars"}, // 只读，不能写
+		ToolWhitelist: []string{"read_file", "list_directory", "count_file_chars"},
 		Rules: []Rule{
 			{Name: "必须有 ADR", Description: "每次架构决策必须记录原因和备选方案"},
 			{Name: "方案比较", Description: "至少提出 2 种方案并列出优劣"},
@@ -41,8 +44,6 @@ func Architect() Skill {
 	}
 }
 
-// CodeReview 代码审查模式：注重安全、性能、规范
-// 适用场景：代码审查、安全审计、质量检查
 func CodeReview() Skill {
 	return Skill{
 		Name:        "code_review",
@@ -52,7 +53,7 @@ func CodeReview() Skill {
 1. 列出每个问题的严重级别（Critical / Major / Minor）
 2. 对每个问题给出修改建议
 3. 先分析影响范围，再给出修改方案`,
-		ToolWhitelist: []string{"read_file", "list_directory", "run_shell", "edit_file_block"},
+		ToolWhitelist: []string{"read_file", "list_directory", "run_shell", "run_powershell", "edit_file_block"},
 		Rules: []Rule{
 			{Name: "严重级别", Description: "每个问题必须标记 Critical/Major/Minor"},
 			{Name: "影响分析", Description: "改之前必须分析影响范围"},
@@ -60,8 +61,6 @@ func CodeReview() Skill {
 	}
 }
 
-// Frontend 前端设计模式：注重组件拆分、可访问性、响应式
-// 适用场景：UI 设计、组件库开发、前端架构
 func Frontend() Skill {
 	return Skill{
 		Name:        "frontend_design",
@@ -87,4 +86,52 @@ func AllBuiltInSkills() []Skill {
 		CodeReview(),
 		Frontend(),
 	}
+}
+
+// ========== 外部加载 ==========
+
+// LoadFromFile 从 JSON 文件加载一个 Skill
+func LoadFromFile(path string) (*Skill, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取 Skill 文件失败：%w", err)
+	}
+	var s Skill
+	if err := json.Unmarshal(data, &s); err != nil {
+		return nil, fmt.Errorf("解析 Skill 文件失败：%w\n路径：%s", err, path)
+	}
+	if s.Name == "" {
+		return nil, fmt.Errorf("Skill 文件缺少 name 字段：%s", path)
+	}
+	return &s, nil
+}
+
+// LoadFromDir 从目录批量加载 Skill（扫描所有 .json 文件）
+func LoadFromDir(dir string) ([]Skill, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return []Skill{}, nil
+		}
+		return nil, err
+	}
+
+	var skills []Skill
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		s, err := LoadFromFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			fmt.Printf("  ⚠️  加载 Skill 失败 %s：%v\n", e.Name(), err)
+			continue
+		}
+		skills = append(skills, *s)
+	}
+	return skills, nil
+}
+
+// LoadFromURL 从 URL 加载 Skill（预留，暂未实现）
+func LoadFromURL(url string) (*Skill, error) {
+	return nil, fmt.Errorf("从 URL 加载 Skill 暂未实现，请先下载到 %s", url)
 }
