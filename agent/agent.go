@@ -47,6 +47,10 @@ func New(apiKey, model string) *Agent {
 		cmdRegistry: command.NewRegistry(),
 		sysPrompt: "在输出结论之前，请先一步步展示你的推理过程。",
 	}
+	// 从文件加载默认 system prompt，文件不存在时静默使用空字符串
+	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
+		a.sysPrompt = p
+	}
 	a.RestoreFromCheckpoint()
 	return a
 }

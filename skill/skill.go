@@ -24,73 +24,6 @@ type Rule struct {
 	Description string `json:"description"`
 }
 
-// ========== 内置 Skill ==========
-
-func Architect() Skill {
-	return Skill{
-		Name:        "architect",
-		Description: "资深架构师模式 — 分析系统、对比方案、输出架构决策",
-		SystemPrompt: `你是一个资深软件架构师。
-在输出结论之前，请先一步步展示你的推理过程。
-在写任何代码之前，你必须：
-1. 分析现有系统结构和代码组织
-2. 提出至少 2 种方案并比较优劣
-3. 输出架构决策记录（ADR）
-4. 确认方案后再开始实施`,
-		ToolWhitelist: []string{"read_file", "list_directory", "count_file_chars", "glob"},
-		Rules: []Rule{
-			{Name: "必须有 ADR", Description: "每次架构决策必须记录原因和备选方案"},
-			{Name: "方案比较", Description: "至少提出 2 种方案并列出优劣"},
-		},
-	}
-}
-
-func CodeReview() Skill {
-	return Skill{
-		Name:        "code_review",
-		Description: "代码审查专家模式 — 检查安全、性能、代码规范",
-		SystemPrompt: `你是一个代码审查专家。
-在输出结论之前，请先一步步展示你的推理过程。
-审查代码时你必须：
-1. 列出每个问题的严重级别（Critical / Major / Minor）
-2. 对每个问题给出修改建议
-3. 先分析影响范围，再给出修改方案`,
-		ToolWhitelist: []string{"read_file", "list_directory", "run_shell", "run_powershell", "edit_file_block", "glob", "grep"},
-		Rules: []Rule{
-			{Name: "严重级别", Description: "每个问题必须标记 Critical/Major/Minor"},
-			{Name: "影响分析", Description: "改之前必须分析影响范围"},
-		},
-	}
-}
-
-func Frontend() Skill {
-	return Skill{
-		Name:        "frontend_design",
-		Description: "前端架构师模式 — 组件设计、交互、可访问性",
-		SystemPrompt: `你是一个前端架构师。
-在输出结论之前，请先一步步展示你的推理过程。
-设计 UI 时你必须：
-1. 考虑组件拆分和复用
-2. 考虑可访问性（a11y）
-3. 考虑响应式布局
-4. 输出组件树和状态管理方案`,
-		ToolWhitelist: []string{"read_file", "list_directory", "write_file", "glob", "grep"},
-		Rules: []Rule{
-			{Name: "可访问性", Description: "每个组件必须考虑 aria 标签和键盘导航"},
-			{Name: "响应式", Description: "设计必须适配移动端和桌面端"},
-		},
-	}
-}
-
-// AllBuiltInSkills 返回所有内置 Skill
-func AllBuiltInSkills() []Skill {
-	return []Skill{
-		Architect(),
-		CodeReview(),
-		Frontend(),
-	}
-}
-
 // ========== 外部加载 ==========
 
 // LoadFromFile 从 JSON 文件加载一个 Skill
@@ -138,4 +71,5 @@ func LoadFromDir(dir string) ([]Skill, error) {
 func LoadFromURL(url string) (*Skill, error) {
 	return nil, fmt.Errorf("从 URL 加载 Skill 暂未实现，请先下载到 %s", url)
 }
+
 

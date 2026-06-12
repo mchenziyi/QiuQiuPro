@@ -29,7 +29,13 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 		toolList = append(toolList, fmt.Sprintf("- %s：%s", t.Name, t.Description))
 	}
 
-	prompt := fmt.Sprintf(`你是一个项目规划专家。把目标拆成 3~8 个步骤。
+	prompt, err := LoadPrompt("prompt/plan/generate.xml", PromptVars{
+		Tools: strings.Join(toolList, "\n"),
+		Goal:  goal,
+	})
+	if err != nil {
+		// fallback：文件加载失败时用默认 prompt（不影响已有功能）
+		prompt = fmt.Sprintf(`你是一个项目规划专家。把目标拆成 3~8 个步骤。
 
 可用工具：
 %s
@@ -38,6 +44,7 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 只输出 JSON，格式：[{"id":1,"desc":"步骤描述"}, ...]
 
 目标：%s`, strings.Join(toolList, "\n"), goal)
+	}
 
 	resp, err := a.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
@@ -82,7 +89,13 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 		stepsText = append(stepsText, fmt.Sprintf("%d. %s", s.ID, s.Desc))
 	}
 
-	prompt := fmt.Sprintf(`你是一个项目规划评审专家。请检查以下 Plan 的质量。
+	prompt, err := LoadPrompt("prompt/plan/review.xml", PromptVars{
+		Goal:  plan.Goal,
+		Steps: strings.Join(stepsText, "\n"),
+	})
+	if err != nil {
+		// fallback
+		prompt = fmt.Sprintf(`你是一个项目规划评审专家。请检查以下 Plan 的质量。
 
 目标：%s
 
@@ -96,6 +109,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 
 如果 Plan 没问题，只输出 "OK"。
 如果有问题，输出修正后的 JSON：[{"id":1,"desc":"步骤描述"}, ...]`, plan.Goal, strings.Join(stepsText, "\n"))
+	}
 
 	resp, err := a.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
@@ -140,7 +154,6 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 }
 
 // ExecutePlan 按顺序执行 Plan 中的每一步
-// 某步失败时先反思（Reflect）再重规划（RePlan），不中断整体执行
 func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 	for i := 0; i < len(plan.Steps); i++ {
 		step := &plan.Steps[i]
@@ -151,14 +164,12 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 			step.Status = "failed"
 			fmt.Printf("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
 
-			// 先反思失败原因，再带着反思重新规划
 			reflection := a.Reflect(ctx, plan, i, err)
 			newPlan, replanErr := a.RePlan(ctx, plan, i, reflection)
 			if replanErr != nil {
 				return fmt.Errorf("第 %d 步失败：%w（重规划也失败：%v）", step.ID, err, replanErr)
 			}
 
-			// 保留已完成步骤 + 当前失败步骤，替换后续步骤为新方案
 			plan.Steps = append(plan.Steps[:i+1], newPlan.Steps...)
 			a.debugf("  🔄 已重新规划剩余步骤（反思后新方案共 %d 步）\n", len(newPlan.Steps))
 			continue
@@ -170,14 +181,22 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 }
 
 // Reflect 让 LLM 分析失败原因，输出反思
-// 反思结果会被传给 RePlan，帮助规划更准确的后续步骤
 func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err error) string {
 	var doneText []string
 	for i := 0; i < failedIndex; i++ {
 		doneText = append(doneText, fmt.Sprintf("✅ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
 	}
 
-	prompt := fmt.Sprintf(`你是一个项目复盘专家。执行计划时某步失败了，请分析根本原因。
+	prompt, perr := LoadPrompt("prompt/plan/reflect.xml", PromptVars{
+		Goal:           plan.Goal,
+		DoneSteps:      strings.Join(doneText, "\n"),
+		FailedStepID:   plan.Steps[failedIndex].ID,
+		FailedStepDesc: plan.Steps[failedIndex].Desc,
+		Error:          err.Error(),
+	})
+	if perr != nil {
+		// fallback
+		prompt = fmt.Sprintf(`你是一个项目复盘专家。执行计划时某步失败了，请分析根本原因。
 
 总目标：%s
 
@@ -193,10 +212,11 @@ func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err er
 3. 下一次尝试时的具体修改策略是什么？
 
 输出反思（50-100 字，口语化）：`,
-		plan.Goal, strings.Join(doneText, "\n"),
-		plan.Steps[failedIndex].ID, plan.Steps[failedIndex].Desc, err)
+			plan.Goal, strings.Join(doneText, "\n"),
+			plan.Steps[failedIndex].ID, plan.Steps[failedIndex].Desc, err)
+	}
 
-	resp, err := a.client.CreateChatCompletion(ctx,
+	resp, rerr := a.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
 			Model: a.model,
 			Messages: []openai.ChatCompletionMessage{
@@ -205,8 +225,8 @@ func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err er
 			},
 		},
 	)
-	if err != nil {
-		return fmt.Sprintf("（反思失败：%v）", err)
+	if rerr != nil {
+		return fmt.Sprintf("（反思失败：%v）", rerr)
 	}
 
 	reflection := strings.TrimSpace(resp.Choices[0].Message.Content)
@@ -225,7 +245,15 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflect
 		remainingText = append(remainingText, fmt.Sprintf("❌ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
 	}
 
-	prompt := fmt.Sprintf(`你是一个项目规划专家。执行过程中某步失败了，请重新规划后续步骤。
+	prompt, err := LoadPrompt("prompt/plan/replan.xml", PromptVars{
+		Goal:           plan.Goal,
+		DoneSteps:      strings.Join(doneText, "\n"),
+		RemainingSteps: strings.Join(remainingText, "\n"),
+		Reflection:     reflection,
+	})
+	if err != nil {
+		// fallback
+		prompt = fmt.Sprintf(`你是一个项目规划专家。执行过程中某步失败了，请重新规划后续步骤。
 
 总目标：%s
 
@@ -245,9 +273,10 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflect
 - 步骤数不超过 8 步
 
 只输出 JSON，格式：[{"id":1,"desc":"步骤描述"}, ...]`,
-		plan.Goal, strings.Join(doneText, "\n"), strings.Join(remainingText, "\n"), reflection)
+			plan.Goal, strings.Join(doneText, "\n"), strings.Join(remainingText, "\n"), reflection)
+	}
 
-	resp, err := a.client.CreateChatCompletion(ctx,
+	resp, rerr := a.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
 			Model: a.model,
 			Messages: []openai.ChatCompletionMessage{
@@ -256,8 +285,8 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflect
 			},
 		},
 	)
-	if err != nil {
-		return nil, fmt.Errorf("重规划失败：%w", err)
+	if rerr != nil {
+		return nil, fmt.Errorf("重规划失败：%w", rerr)
 	}
 
 	content := resp.Choices[0].Message.Content

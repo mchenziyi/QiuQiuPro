@@ -103,24 +103,13 @@ func main() {
 	// ========== 加载 Skill ==========
 	home, _ := os.UserHomeDir()
 	skillsDir := home + "/.qiuqiu/skills"
-	allSkills := skill.AllBuiltInSkills()
+	allSkills, _ := skill.LoadFromDir("prompt/skills")
 	externalSkills, _ := skill.LoadFromDir(skillsDir)
 	allSkills = append(allSkills, externalSkills...)
 
 	fmt.Println("\n🎯 可用 Skill（输入 /use <技能名> 切换）：")
 	for _, s := range allSkills {
-		origin := "内置"
-		found := false
-		for _, bs := range skill.AllBuiltInSkills() {
-			if bs.Name == s.Name {
-				found = true
-				break
-			}
-		}
-		if !found {
-			origin = "外部"
-		}
-		fmt.Printf("  - %s [%s]：%s\n", s.Name, origin, s.Description)
+		fmt.Printf("  - %s\n", s.Name)
 	}
 
 	// ========== 注册命令 ==========
