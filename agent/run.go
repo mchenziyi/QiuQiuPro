@@ -2,7 +2,9 @@
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -24,19 +26,12 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	maxLoops := 15
 	for i := 0; i < maxLoops; i++ {
-		resp, err := a.client.CreateChatCompletion(ctx,
-			openai.ChatCompletionRequest{
-				Model:    a.model,
-				Messages: reqMessages,
-				Tools:    a.toolDefinitions(),
-			},
-		)
+		msg, err := a.streamChat(ctx, reqMessages)
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
 		}
 
-		msg := resp.Choices[0].Message
 		if msg.Content != "" {
 			a.recordEvent("assistant", msg.Content, "")
 		}
@@ -100,4 +95,86 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		Role: "user", Content: userInput,
 	})
 	return "", fmt.Errorf("达到最大循环次数 %d", maxLoops)
+}
+
+// streamChat 流式调用 LLM，实时输出文本，同时积累 tool call
+func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, error) {
+	stream, err := a.client.CreateChatCompletionStream(ctx,
+		openai.ChatCompletionRequest{
+			Model:    a.model,
+			Messages: messages,
+			Tools:    a.toolDefinitions(),
+		},
+	)
+	if err != nil {
+		return openai.ChatCompletionMessage{}, err
+	}
+	defer stream.Close()
+
+	var content string
+	toolCallAcc := make(map[int]openai.ToolCall)
+
+	for {
+		resp, err := stream.Recv()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return openai.ChatCompletionMessage{}, err
+		}
+
+		if len(resp.Choices) == 0 {
+			continue
+		}
+		delta := resp.Choices[0].Delta
+
+		if delta.Content != "" {
+			content += delta.Content
+			fmt.Print(delta.Content)
+		}
+
+		for _, tc := range delta.ToolCalls {
+			if tc.Index == nil {
+				continue
+			}
+			idx := *tc.Index
+			existing, ok := toolCallAcc[idx]
+			if !ok {
+				existing = openai.ToolCall{Index: &idx}
+			}
+			if tc.ID != "" {
+				existing.ID = tc.ID
+			}
+			if tc.Type != "" {
+				existing.Type = tc.Type
+			}
+			if tc.Function.Name != "" {
+				existing.Function.Name = tc.Function.Name
+			}
+			if tc.Function.Arguments != "" {
+				existing.Function.Arguments += tc.Function.Arguments
+			}
+			toolCallAcc[idx] = existing
+		}
+	}
+
+	if content != "" {
+		fmt.Println()
+	}
+
+	msg := openai.ChatCompletionMessage{
+		Role:    "assistant",
+		Content: content,
+	}
+
+	if len(toolCallAcc) > 0 {
+		msg.ToolCalls = make([]openai.ToolCall, 0, len(toolCallAcc))
+		for i := 0; i < len(toolCallAcc); i++ {
+			if tc, ok := toolCallAcc[i]; ok {
+				msg.ToolCalls = append(msg.ToolCalls, tc)
+			}
+		}
+	}
+
+	return msg, nil
 }
