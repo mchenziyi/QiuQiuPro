@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -27,7 +27,8 @@ type Agent struct {
 	sysPrompt     string
 	cmdRegistry   *command.Registry
 	lastEventID   string
-	Quiet         bool       // true 时隐藏中间日志（🔧📦等）
+	Quiet         bool       // true 时隐藏中间日志
+	Mode          string     // 运行模式："plan"（默认）| "ask"（直接问答）
 	toolCallCount int
 }
 
@@ -38,16 +39,16 @@ func New(apiKey, model string) *Agent {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = "https://api.deepseek.com"
 	a := &Agent{
-		client:   openai.NewClientWithConfig(config),
-		model:    model,
-		allTools: make(map[string]tool.Tool),
-		messages: make([]openai.ChatCompletionMessage, 0),
-		store:    event.NewStore(".reasonix/sessions"),
-		session:  fmt.Sprintf("session_%d", time.Now().Unix()),
+		client:      openai.NewClientWithConfig(config),
+		model:       model,
+		allTools:    make(map[string]tool.Tool),
+		messages:    make([]openai.ChatCompletionMessage, 0),
+		store:       event.NewStore(".reasonix/sessions"),
+		session:     fmt.Sprintf("session_%d", time.Now().Unix()),
 		cmdRegistry: command.NewRegistry(),
-		sysPrompt: "在输出结论之前，请先一步步展示你的推理过程。",
+		Mode:        "plan",
+		sysPrompt:   "在输出结论之前，请先一步步展示你的推理过程。",
 	}
-	// 从文件加载默认 system prompt，文件不存在时静默使用空字符串
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
 	}
@@ -57,7 +58,9 @@ func New(apiKey, model string) *Agent {
 
 func (a *Agent) RegisterTool(t tool.Tool)       { a.allTools[t.Name] = t }
 func (a *Agent) RegisterTools(tools []tool.Tool) {
-	for _, t := range tools { a.RegisterTool(t) }
+	for _, t := range tools {
+		a.RegisterTool(t)
+	}
 }
 func (a *Agent) RegisterMCPTools(prefix string, tools []tool.Tool) {
 	for _, t := range tools {
@@ -82,20 +85,38 @@ func (a *Agent) ApplySkill(s skill.Skill) {
 	fmt.Printf("🎯 切换到 [%s] 模式：%s\n", s.Name, s.Description)
 }
 
+// SetMode 切换 Agent 运行模式：plan（规划执行）| ask（直接问答）
+func (a *Agent) SetMode(mode string) {
+	if mode != "ask" && mode != "plan" {
+		fmt.Printf("  ⚠️  未知模式：%s，可选：plan（规划执行）/ ask（直接问答）\n", mode)
+		return
+	}
+	a.Mode = mode
+	fmt.Printf("  🔄 切换到 [%s] 模式\n", mode)
+}
+
+func (a *Agent) CurrentMode() string { return a.Mode }
+
 func (a *Agent) CurrentSkillName() string {
-	if a.currentSkill != nil { return a.currentSkill.Name }
+	if a.currentSkill != nil {
+		return a.currentSkill.Name
+	}
 	return "default"
 }
 
 func (a *Agent) availableTools() []tool.Tool {
 	if len(a.activeTools) == 0 {
 		var tools []tool.Tool
-		for _, t := range a.allTools { tools = append(tools, t) }
+		for _, t := range a.allTools {
+			tools = append(tools, t)
+		}
 		return tools
 	}
 	var tools []tool.Tool
 	for _, name := range a.activeTools {
-		if t, ok := a.allTools[name]; ok { tools = append(tools, t) }
+		if t, ok := a.allTools[name]; ok {
+			tools = append(tools, t)
+		}
 	}
 	return tools
 }
@@ -132,7 +153,6 @@ func (a *Agent) SessionID() string                  { return a.session }
 func (a *Agent) EventStore() *event.Store           { return a.store }
 func (a *Agent) TrimMessages()                      { a.trimMessages() }
 
-// SaveCheckpoint 保存当前状态快照
 func (a *Agent) debugf(format string, args ...interface{}) {
 	if !a.Quiet {
 		fmt.Printf(format, args...)
@@ -144,7 +164,6 @@ func (a *Agent) SaveCheckpoint() {
 	a.store.SaveCheckpoint(a.session, a.lastEventID, string(data))
 }
 
-// RestoreFromCheckpoint 从快照恢复状态
 func (a *Agent) RestoreFromCheckpoint() bool {
 	cp, err := a.store.LoadCheckpoint(a.session)
 	if err != nil || cp == nil {
@@ -160,8 +179,6 @@ func (a *Agent) RestoreFromCheckpoint() bool {
 	return true
 }
 
-// SpawnSubAgent 创建一个子 Agent，共享 LLM 客户端和工具，但有独立的对话历史
-// 子 Agent 用于执行独立的子任务（如查文档、写测试），不干扰主 Agent 的上下文
 func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) {
 	sub := &Agent{
 		client:   a.client,
@@ -174,5 +191,3 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	}
 	return sub.Run(ctx, task)
 }
-
-

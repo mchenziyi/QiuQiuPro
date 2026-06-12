@@ -1,4 +1,4 @@
-﻿// 球球 Agent — 主入口
+// 球球 Agent — 主入口
 package main
 
 import (
@@ -221,13 +221,28 @@ func main() {
 		},
 	})
 
-	fmt.Printf("\n🤖 球球 Agent 已启动 | 当前模式：[%s]（输入 /help 查看所有命令）\n", a.CurrentSkillName())
+	// /mode <ask|plan> — 切换运行模式
+	registry.Register(command.Command{
+		Name: "mode", Description: "切换运行模式：plan（规划执行）/ ask（直接问答）。用法：/mode <模式名>",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Printf("当前模式：%s（可选：plan 规划执行 / ask 直接问答）\n", a.CurrentMode())
+				return true
+			}
+			a.SetMode(args)
+			return true
+		},
+	})
+
+	fmt.Printf("\n🤖 球球 Agent 已启动 | Skill：[%s] 模式：[%s]（输入 /help 查看所有命令）\n",
+		a.CurrentSkillName(), a.CurrentMode())
 	fmt.Println(strings.Repeat("─", 50))
 
 	// ========== 交互式对话循环 ==========
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
-		fmt.Print("\n🧑 你: ")
+		modeTag := strings.ToUpper(a.CurrentMode())
+		fmt.Printf("\n🧑 [%s] 你: ", modeTag)
 		if !scanner.Scan() {
 			break
 		}
@@ -241,34 +256,47 @@ func main() {
 			continue
 		}
 
-		// 旧命令兼容：exit 直接在 main 处理
+		// exit 直接退出
 		if input == "exit" || input == "quit" {
 			fmt.Println("👋 再见！")
 			break
 		}
 
-		// 正常流程：规划 → 执行
-		fmt.Println("📋 正在拆解计划...")
-		plan, err := a.GeneratePlan(ctx, input)
-		if err != nil {
-			fmt.Printf("❌ 规划失败：%v\n", err)
-			continue
-		}
-		fmt.Println("📋 计划如下：")
-		for _, s := range plan.Steps {
-			fmt.Printf("  %d. %s\n", s.ID, s.Desc)
-		}
+		// 按模式分支
+		switch a.CurrentMode() {
+		case "ask":
+			// Ask 模式：直接问答，不走规划
+			answer, err := a.Run(ctx, input)
+			if err != nil {
+				fmt.Printf("❌ 回答失败：%v\n", err)
+			} else {
+				fmt.Printf("\n🤖 %s\n", answer)
+			}
 
-		fmt.Println("\n🔍 正在审查计划质量...")
-		plan, _ = a.ReviewPlan(ctx, plan)
+		case "plan":
+			// Plan 模式：规划 → 执行（原有流程）
+			fmt.Println("📋 正在拆解计划...")
+			plan, err := a.GeneratePlan(ctx, input)
+			if err != nil {
+				fmt.Printf("❌ 规划失败：%v\n", err)
+				continue
+			}
+			fmt.Println("📋 计划如下：")
+			for _, s := range plan.Steps {
+				fmt.Printf("  %d. %s\n", s.ID, s.Desc)
+			}
 
-		fmt.Println("\n🚀 开始执行...")
-		err = a.ExecutePlan(ctx, plan)
-		if err != nil {
-			fmt.Printf("❌ 执行失败：%v\n", err)
-			continue
+			fmt.Println("\n🔍 正在审查计划质量...")
+			plan, _ = a.ReviewPlan(ctx, plan)
+
+			fmt.Println("\n🚀 开始执行...")
+			err = a.ExecutePlan(ctx, plan)
+			if err != nil {
+				fmt.Printf("❌ 执行失败：%v\n", err)
+				continue
+			}
+			fmt.Println("\n🎉 全部完成！")
+			a.TrimMessages()
 		}
-		fmt.Println("\n🎉 全部完成！")
-		a.TrimMessages()
 	}
 }
