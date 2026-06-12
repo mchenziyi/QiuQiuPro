@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -76,7 +76,6 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 }
 
 // ReviewPlan 让 LLM 自我审查 Plan 的质量
-// 如果发现问题，返回修正后的 Plan；如果没问题，Plan 保持不变
 func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	var stepsText []string
 	for _, s := range plan.Steps {
@@ -141,7 +140,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 }
 
 // ExecutePlan 按顺序执行 Plan 中的每一步
-// 某步失败时自动触发重规划（RePlan），不中断整体执行
+// 某步失败时先反思（Reflect）再重规划（RePlan），不中断整体执行
 func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 	for i := 0; i < len(plan.Steps); i++ {
 		step := &plan.Steps[i]
@@ -152,15 +151,16 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 			step.Status = "failed"
 			fmt.Printf("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
 
-			// 让 LLM 重新规划剩余步骤
-			newPlan, replanErr := a.RePlan(ctx, plan, i)
+			// 先反思失败原因，再带着反思重新规划
+			reflection := a.Reflect(ctx, plan, i, err)
+			newPlan, replanErr := a.RePlan(ctx, plan, i, reflection)
 			if replanErr != nil {
 				return fmt.Errorf("第 %d 步失败：%w（重规划也失败：%v）", step.ID, err, replanErr)
 			}
 
 			// 保留已完成步骤 + 当前失败步骤，替换后续步骤为新方案
 			plan.Steps = append(plan.Steps[:i+1], newPlan.Steps...)
-			a.debugf("  🔄 已重新规划剩余步骤（新方案共 %d 步）\n", len(newPlan.Steps))
+			a.debugf("  🔄 已重新规划剩余步骤（反思后新方案共 %d 步）\n", len(newPlan.Steps))
 			continue
 		}
 		step.Status = "done"
@@ -169,8 +169,53 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 	return nil
 }
 
-// RePlan 让 LLM 根据已完成和失败的步骤，重新规划后续方案
-func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int) (*Plan, error) {
+// Reflect 让 LLM 分析失败原因，输出反思
+// 反思结果会被传给 RePlan，帮助规划更准确的后续步骤
+func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err error) string {
+	var doneText []string
+	for i := 0; i < failedIndex; i++ {
+		doneText = append(doneText, fmt.Sprintf("✅ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
+	}
+
+	prompt := fmt.Sprintf(`你是一个项目复盘专家。执行计划时某步失败了，请分析根本原因。
+
+总目标：%s
+
+已完成步骤：
+%s
+
+失败步骤：%d. %s
+失败信息：%v
+
+请深刻反思：
+1. 错误发生的根本原因是什么？
+2. 你忽略了什么？
+3. 下一次尝试时的具体修改策略是什么？
+
+输出反思（50-100 字，口语化）：`,
+		plan.Goal, strings.Join(doneText, "\n"),
+		plan.Steps[failedIndex].ID, plan.Steps[failedIndex].Desc, err)
+
+	resp, err := a.client.CreateChatCompletion(ctx,
+		openai.ChatCompletionRequest{
+			Model: a.model,
+			Messages: []openai.ChatCompletionMessage{
+				{Role: "system", Content: "你是一个经验丰富的项目复盘专家，善于从失败中总结教训"},
+				{Role: "user", Content: prompt},
+			},
+		},
+	)
+	if err != nil {
+		return fmt.Sprintf("（反思失败：%v）", err)
+	}
+
+	reflection := strings.TrimSpace(resp.Choices[0].Message.Content)
+	fmt.Printf("  💡 反思：%s\n", truncate(reflection, 120))
+	return reflection
+}
+
+// RePlan 让 LLM 根据已完成和失败的步骤，结合反思重新规划后续方案
+func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflection string) (*Plan, error) {
 	var doneText []string
 	for i := 0; i < failedIndex; i++ {
 		doneText = append(doneText, fmt.Sprintf("✅ %d. %s", plan.Steps[i].ID, plan.Steps[i].Desc))
@@ -190,14 +235,17 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int) (*Plan,
 失败/未完成的步骤：
 %s
 
-请根据已完成的内容，重新规划剩余步骤。要求：
+失败反思（本轮执行遇到的问题）：
+%s
+
+请结合失败反思，重新规划剩余步骤。要求：
 - 每步是 LLM 一次能处理的粒度
 - 按执行顺序排列
 - 每步不超过 15 字
 - 步骤数不超过 8 步
 
 只输出 JSON，格式：[{"id":1,"desc":"步骤描述"}, ...]`,
-		plan.Goal, strings.Join(doneText, "\n"), strings.Join(remainingText, "\n"))
+		plan.Goal, strings.Join(doneText, "\n"), strings.Join(remainingText, "\n"), reflection)
 
 	resp, err := a.client.CreateChatCompletion(ctx,
 		openai.ChatCompletionRequest{
