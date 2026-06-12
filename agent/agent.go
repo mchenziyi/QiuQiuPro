@@ -45,6 +45,7 @@ func New(apiKey, model string) *Agent {
 		store:    event.NewStore(".reasonix/sessions"),
 		session:  fmt.Sprintf("session_%d", time.Now().Unix()),
 		cmdRegistry: command.NewRegistry(),
+		sysPrompt: "在输出结论之前，请先一步步展示你的推理过程。",
 	}
 	a.RestoreFromCheckpoint()
 	return a
@@ -169,4 +170,5 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	}
 	return sub.Run(ctx, task)
 }
+
 
