@@ -69,7 +69,7 @@ func New(apiKey, model string) *Agent {
 		Mode:        "plan",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
-		sysPrompt:   "在输出结论之前，请先一步步展示你的推理过程。",
+		sysPrompt:   "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。",
 
 		contextWindow:    defaultContextWindow,
 		compactRatio:     defaultCompactRatio,

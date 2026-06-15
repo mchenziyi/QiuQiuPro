@@ -1,5 +1,11 @@
 ﻿# 01 — CoT（思维链）
 
+> ⚠️ 已被原生思考取代（2026）：迁移到 deepseek-v4-flash 后，模型自带 thinking 模式（默认开启、
+> reasoning_effort=max），会在最终答案前原生输出推理链。本文中"在 system prompt 里硬塞一句
+> 『先一步步展示推理过程』"的做法已从所有提示词（`prompt/default/system.xml`、`agent/agent.go`
+> 兜底、`prompt/skills/*.json`）移除，以免与原生思考重复、白占上下文。详见 `docs/22-deepseek-v4-migration.md`。
+> 下文保留作为演进记录。
+
 ## 为什么要做
 
 CoT（Chain of Thought，思维链）的核心思想是：强制要求模型在输出最终答案前，
