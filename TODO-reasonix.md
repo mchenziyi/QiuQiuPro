@@ -35,10 +35,12 @@
 - 详见 `docs/08-stdin-unify.md`
 - 文件：`agent/agent.go`、`agent/input.go`、`agent/run.go`、`main.go`、`agent/input_test.go`
 
-### P2. go.mod 与文档不一致（工程卫生）
-- README 写 Go 1.22+，`go.mod` 实为 `go 1.25.5`，对不上
-- 依赖全标 `// indirect`，但实际为直接依赖
-- 修复：对齐版本说明 + 跑 `go mod tidy`
+### ✅ P2. go.mod 与文档不一致（工程卫生）— 已修复
+- 查清 `mcp-go` 强制 go 1.25.5 → 保留 go.mod 版本，改 README「Go 1.22+」为「1.25.5+」（两处）
+- go.mod 直接依赖（mcp-go / go-openai）去掉 `// indirect` 并单独成块
+- 因未跟踪的 `graph/` 会干扰 `go mod tidy`，改为手动精确修正 + `go mod verify` 验证
+- 详见 `docs/09-gomod-hygiene.md`
+- 文件：`go.mod`、`README.md`
 
 ### P3. 缺少测试（工程卫生）
 - 有 `/test` 命令但仓库无任何 `_test.go`
