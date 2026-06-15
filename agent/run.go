@@ -10,23 +10,23 @@ import (
 )
 
 // Run 处理一轮用户输入——Agent 核心循环
+//
+// 全量保留：a.messages 是唯一的事实源。一轮对话里的所有往返——用户输入、
+// 带 tool_calls 的 assistant 消息、以及每条 tool 结果——都按顺序写进 a.messages，
+// 不再像过去那样只在结束时存「用户问题 + 最终回答」而丢掉中间的工具上下文。
+// 这样下一轮 LLM 能看到上一轮读过哪些文件、工具返回了什么，避免重复读取与「失忆」。
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.recordEvent("user", userInput, "")
 
-	reqMessages := make([]openai.ChatCompletionMessage, 0)
-	if a.sysPrompt != "" {
-		reqMessages = append(reqMessages, openai.ChatCompletionMessage{
-			Role: "system", Content: a.sysPrompt,
-		})
-	}
-	reqMessages = append(reqMessages, a.messages...)
-	reqMessages = append(reqMessages, openai.ChatCompletionMessage{
+	// 用户消息进入唯一的消息日志。
+	a.messages = append(a.messages, openai.ChatCompletionMessage{
 		Role: "user", Content: userInput,
 	})
 
 	maxLoops := 15
 	for i := 0; i < maxLoops; i++ {
-		msg, err := a.streamChat(ctx, reqMessages)
+		// 每轮都从唯一日志重建请求（system 单独前置，不入 a.messages）。
+		msg, err := a.streamChat(ctx, a.buildRequestMessages())
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
@@ -35,66 +35,69 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		if msg.Content != "" {
 			a.recordEvent("assistant", msg.Content, "")
 		}
-		reqMessages = append(reqMessages, msg)
+		// assistant 消息（可能带 tool_calls）进入日志。
+		a.messages = append(a.messages, msg)
 
-		// 没 ToolCall → 任务完成（保存 Checkpoint）
+		// 没 ToolCall → 任务完成（保存 Checkpoint）。
 		if len(msg.ToolCalls) == 0 {
 			a.SaveCheckpoint()
-			a.messages = append(a.messages, openai.ChatCompletionMessage{
-				Role: "user", Content: userInput,
-			})
-			a.messages = append(a.messages, msg)
 			return msg.Content, nil
 		}
 
-		// 有 ToolCall → 依次执行
+		// 有 ToolCall → 依次执行。每个 tool_call 都必须回一条 tool 结果，
+		// 否则会留下悬空的 assistant(tool_calls)，破坏「调用/结果」配对、下轮请求即报错。
 		for _, tc := range msg.ToolCalls {
 			a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
 			a.debugf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
 
-			tool, ok := a.allTools[tc.Function.Name]
-			if !ok {
-				return "", fmt.Errorf("未知工具: %s", tc.Function.Name)
-			}
-
-			// 高危工具：执行前让用户确认
-			if IsHighRiskTool(tc.Function.Name) {
-				a.debugf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
-				fmt.Print("  确认执行？[Y/n] ")
-				var confirm string
-				fmt.Scanln(&confirm)
-				if confirm == "n" || confirm == "N" || confirm == "no" {
-					result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
-					fmt.Printf("  🚫 %s\n", result)
-					a.recordEvent("tool_result", result, tc.Function.Name)
-					reqMessages = append(reqMessages, openai.ChatCompletionMessage{
-						Role: "tool", Content: result, ToolCallID: tc.ID,
-					})
-					continue
-				}
-			}
-
-			result := tool.Execute(tc.Function.Arguments)
+			result := a.executeToolCall(tc)
 			a.recordEvent("tool_result", result, tc.Function.Name)
 			a.debugf("  📦 %s\n", truncate(result, 100))
 
-			// 每 N 次工具调用保存 Checkpoint
+			// tool 结果进入日志（与上面的 assistant.tool_calls 按 ToolCallID 配对）。
+			a.messages = append(a.messages, openai.ChatCompletionMessage{
+				Role: "tool", Content: result, ToolCallID: tc.ID, Name: tc.Function.Name,
+			})
+
+			// 每 N 次工具调用保存 Checkpoint。
 			a.toolCallCount++
 			if a.toolCallCount%checkpointInterval == 0 {
 				a.SaveCheckpoint()
 			}
-
-			reqMessages = append(reqMessages, openai.ChatCompletionMessage{
-				Role: "tool", Content: result, ToolCallID: tc.ID,
-			})
 		}
 	}
 
 	a.SaveCheckpoint()
-	a.messages = append(a.messages, openai.ChatCompletionMessage{
-		Role: "user", Content: userInput,
-	})
 	return "", fmt.Errorf("达到最大循环次数 %d", maxLoops)
+}
+
+// executeToolCall 执行单个工具调用并返回结果文本。
+//
+// 不变量：无论成功、未知工具、还是被用户取消，都必须返回一段文本作为 tool 结果
+// 回灌给模型——这样每个 tool_call 都有配对的 tool 结果，历史始终合法。
+// 这也使未知工具从「直接中断整轮」变成「把错误喂回，让模型自我纠正」。
+func (a *Agent) executeToolCall(tc openai.ToolCall) string {
+	t, ok := a.allTools[tc.Function.Name]
+	if !ok {
+		result := fmt.Sprintf("error: 未知工具 %s", tc.Function.Name)
+		a.debugf("  ⚠️  %s\n", result)
+		return result
+	}
+
+	// 高危工具：执行前让用户确认。
+	if IsHighRiskTool(tc.Function.Name) {
+		a.debugf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+		fmt.Print("  确认执行？[Y/n] ")
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm == "n" || confirm == "N" || confirm == "no" {
+			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
+			fmt.Printf("  🚫 %s\n", result)
+			return result
+		}
+	}
+
+	return t.Execute(tc.Function.Arguments)
 }
 
 // streamChat 流式调用 LLM，实时输出文本，同时积累 tool call

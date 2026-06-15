@@ -21,12 +21,12 @@
 > 以下是**现有代码已存在的问题**，不是新功能。建议在堆功能前先处理（尤其 P0）。
 > 独立于下方 1–19 的功能清单单独编号。
 
-### P0. 跨轮丢失工具结果（正确性）
-- `Run()` 完成时只把 user + 最终 assistant 存进 `a.messages`，中间的 tool_call / tool_result 全丢
-- 后果：下一轮 LLM 看不到上一轮工具上下文，会重复读同一文件
-- 待决策：保留工具结果摘要 / 接受现状
-- 关联：#8 Session 独立管理、#13 上下文压缩
-- 文件：`agent/run.go`
+### ✅ P0. 跨轮丢失工具结果（正确性）— 已修复
+- 方案：**全量保留工具链**（参照 Reasonix，append-only、永不删消息）
+- `Run()` 把 user / assistant(tool_calls) / 每条 tool 结果全量写进 `a.messages`；`trimMessages` 改为配对感知
+- 体积控制（prune 原地 elide / compact 摘要）留给 #13 上下文压缩
+- 详见 `docs/07-full-tool-history.md`
+- 文件：`agent/run.go`、`agent/helpers.go`、`agent/memory_test.go`
 
 ### P1. stdin 读取方式脆弱（健壮性）
 - 主循环用 `bufio.Scanner`，高危确认处用 `fmt.Scanln`，两者混用同一 stdin
