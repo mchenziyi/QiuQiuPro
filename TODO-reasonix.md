@@ -148,11 +148,17 @@
 
 ### ✅ 13. 上下文压缩 — 已完成
 - 超限时不再直接丢弃，而是让 LLM 把旧消息总结成摘要、用「摘要 + 近消息」替换历史
-- Session 加压缩原语：`NeedsCompaction` / `SplitForCompaction`（配对感知）/ `ApplyCompaction`
-- Agent `maybeCompact` 编排，接入 Run 循环顶部；摘要失败安全退化为 `Trim`
+- **触发时机对前缀缓存友好（按窗口占比、真实用量驱动）**：DeepSeek 按前缀匹配缓存（命中价约
+  未命中 1/50），乱压缩会拉低命中率、抬高成本。故按**占模型窗口的比例**触发（soft 0.5 提醒 /
+  compact 0.8 触发），并用 provider 回传的真实 `prompt_tokens` 判定，比字符估算精确；窗口默认
+  贴合 DeepSeek V4 的 1M，平时几乎压不到、缓存常热
+- Session 压缩原语：`CharCount` / token 预算版 `SplitForCompaction`（配对感知）/ `ApplyCompaction`
+- `streamChat` 开 `IncludeUsage` 捕获用量；`tokPerChar` 按真实用量推导每字符 token 数
+- Agent `maybeCompact` 编排（接入 Run 循环顶部）；摘要失败安全退化为 `Trim`；压缩后清零遥测防重复压
+- 手动口子 `/compact` 命令 + `SetContextWindow` / `DEEPSEEK_CONTEXT_WINDOW` 环境变量
 - 摘要器抽成可注入函数缝（默认 `llmSummarize`），测试无需联网即可全链路验证
 - 详见 `docs/21-context-compaction.md`
-- 文件：`agent/session.go`、`agent/compact.go`、`agent/agent.go`、`agent/run.go`、`agent/compact_test.go`
+- 文件：`agent/session.go`、`agent/compact.go`、`agent/agent.go`、`agent/run.go`、`main.go`、`agent/compact_test.go`
 - 难度：★★★★☆
 
 ### 14. Token 用量追踪

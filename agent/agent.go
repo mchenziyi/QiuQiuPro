@@ -41,6 +41,13 @@ type Agent struct {
 	gate          Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
 	sink          Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
 	summarizer    summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
+
+	// 上下文压缩（TODO #13）：按「占模型窗口的比例」触发，靠真实用量驱动，对前缀缓存友好。
+	contextWindow      int     // 模型上下文窗口（token）；<=0 关闭自动压缩
+	compactRatio       float64 // 提示达到窗口该比例时触发压缩
+	softCompactRatio   float64 // 达到该比例时提醒一次（不压缩）
+	lastPromptTokens   int     // 上一轮 LLM 调用的真实 prompt_tokens（provider 回传），驱动压缩判定
+	softCompactNoticed bool    // 软线提醒的一次性开关，回落到软线下时重置
 }
 
 const maxMessages = 100
@@ -60,6 +67,10 @@ func New(apiKey, model string) *Agent {
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
 		sysPrompt:   "在输出结论之前，请先一步步展示你的推理过程。",
+
+		contextWindow:    defaultContextWindow,
+		compactRatio:     defaultCompactRatio,
+		softCompactRatio: defaultSoftRatio,
 	}
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
@@ -86,6 +97,11 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		in:       a.in,   // 子 Agent 共用父级的输入读取器
 		gate:     a.gate, // 子 Agent 继承父级权限门（如只读模式）
 		sink:     a.sink, // 子 Agent 继承父级输出去向
+
+		contextWindow:    a.contextWindow, // 继承上下文压缩配置，子任务过长时同样兜底
+		compactRatio:     a.compactRatio,
+		softCompactRatio: a.softCompactRatio,
 	}
+	sub.summarizer = sub.llmSummarize
 	return sub.Run(ctx, task)
 }

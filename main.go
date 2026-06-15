@@ -5,10 +5,11 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
-	"flag"
 
 	"agentdemo/agent"
 	"agentdemo/cleanup"
@@ -81,6 +82,12 @@ func main() {
 	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.Quiet = *quiet
+	// 上下文窗口可经环境变量覆盖（默认贴合 DeepSeek V4 的 1M）；切到更小窗口的模型时务必调小。
+	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_CONTEXT_WINDOW")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			a.SetContextWindow(n)
+		}
+	}
 	ctx := context.Background()
 
 	// ========== 加载 MCP 插件 ==========
@@ -291,6 +298,15 @@ func main() {
 			default:
 				fmt.Println("  ⚠️  用法：/readonly on|off")
 			}
+			return true
+		},
+	})
+
+	// /compact — 手动压缩上下文（在前缀缓存自然填满前主动重置一次）
+	registry.Register(command.Command{
+		Name: "compact", Description: "手动压缩上下文：把较早的对话折叠成摘要、保留近消息，主动重置前缀缓存。用法：/compact",
+		Handler: func(args string) bool {
+			a.Compact(ctx)
 			return true
 		},
 	})

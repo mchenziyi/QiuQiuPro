@@ -3,32 +3,37 @@ package agent
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
-func TestSession_NeedsCompaction(t *testing.T) {
+// addMsgs 往会话塞 n 条交替 user/assistant、内容定长的消息，便于按字符数推算 token。
+func addMsgs(s *Session, n, contentLen int) {
+	pad := strings.Repeat("x", contentLen)
+	for i := 0; i < n; i++ {
+		role := "user"
+		if i%2 == 1 {
+			role = "assistant"
+		}
+		s.Add(openai.ChatCompletionMessage{Role: role, Content: pad})
+	}
+}
+
+func TestSession_CharCount(t *testing.T) {
 	s := NewSession("t")
-	s.maxMessages = 4
-	for i := 0; i < 4; i++ {
-		s.Add(openai.ChatCompletionMessage{Role: "user", Content: "x"})
-	}
-	if s.NeedsCompaction() {
-		t.Fatal("恰好等于上限不应触发压缩")
-	}
-	s.Add(openai.ChatCompletionMessage{Role: "user", Content: "x"})
-	if !s.NeedsCompaction() {
-		t.Fatal("超过上限应触发压缩")
+	s.Add(openai.ChatCompletionMessage{Role: "user", Content: "abc"}) // 3
+	s.Add(openai.ChatCompletionMessage{Role: "assistant", ToolCalls: []openai.ToolCall{{
+		Function: openai.FunctionCall{Name: "read_file", Arguments: "{}"}}}}) // 9 + 2
+	if got := s.CharCount(); got != 14 {
+		t.Fatalf("CharCount=%d，期望 14", got)
 	}
 }
 
 // 切分时保留段不能以孤立 tool 开头，且 old+recent 必须能还原原历史。
 func TestSession_SplitForCompaction_PairAware(t *testing.T) {
 	s := NewSession("t")
-	s.maxMessages = 6 // keep = 3
 	mk := func(role, content string, tcs ...string) openai.ChatCompletionMessage {
 		m := openai.ChatCompletionMessage{Role: role, Content: content}
 		for _, id := range tcs {
@@ -37,7 +42,7 @@ func TestSession_SplitForCompaction_PairAware(t *testing.T) {
 		}
 		return m
 	}
-	// 构造让 cut=n-keep=8-3=5 恰好落在孤立 tool 上：assistant(3) 带 B、C 两个调用 → tool B(4)、tool C(5)。
+	// 按 tokPerChar=1.0、tailBudget=13 累加，cut 恰好落在孤立 tool C(index 5) 上，应被向前跳过。
 	s.messages = []openai.ChatCompletionMessage{
 		mk("user", "0"),
 		mk("assistant", "", "A"),
@@ -49,7 +54,7 @@ func TestSession_SplitForCompaction_PairAware(t *testing.T) {
 		{Role: "tool", ToolCallID: "D", Name: "read_file", Content: "d"},
 	}
 
-	old, recent := s.SplitForCompaction()
+	old, recent := s.SplitForCompaction(13, 1.0)
 	if len(recent) == 0 || recent[0].Role == "tool" {
 		t.Fatalf("保留段不应以孤立 tool 开头，实际 recent[0]=%+v", recent[0])
 	}
@@ -95,35 +100,83 @@ func TestRenderForSummary(t *testing.T) {
 	}
 }
 
-// 超限时应调用摘要器、用「摘要 + 近消息」替换历史。
-func TestMaybeCompact_SummarizesWhenOverLimit(t *testing.T) {
+// tokPerChar 应由真实用量推导；无用量或比值离谱时兜底。
+func TestTokPerChar(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	if r := a.tokPerChar(); r != fallbackTokPerChar {
+		t.Fatalf("无用量应兜底 %v，实际 %v", fallbackTokPerChar, r)
+	}
+	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: strings.Repeat("x", 600)})
+	a.lastPromptTokens = 300 // 300 / 600 = 0.5
+	if r := a.tokPerChar(); r != 0.5 {
+		t.Fatalf("用量推导应为 0.5，实际 %v", r)
+	}
+	a.lastPromptTokens = 100000 // 比值 >2，离谱 → 兜底
+	if r := a.tokPerChar(); r != fallbackTokPerChar {
+		t.Fatalf("离谱比值应兜底，实际 %v", r)
+	}
+}
+
+// 真实 prompt_tokens 越过触发线（窗口 * compactRatio）时应摘要旧消息、清零遥测。
+func TestMaybeCompact_SummarizesOverTrigger(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
 	a.SetSink(&captureSink{})
-	a.session.maxMessages = 4 // keep = 2
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
+	addMsgs(a.session, 6, 100) // CharCount=600
+	a.lastPromptTokens = 900   // ≥ high(800) → 触发；tokPerChar=900/600=1.5
 	called := false
 	a.summarizer = func(_ context.Context, msgs []openai.ChatCompletionMessage) (string, error) {
 		called = true
-		return "FAKE_SUMMARY", nil
-	}
-	for i := 0; i < 6; i++ {
-		role := "user"
-		if i%2 == 1 {
-			role = "assistant"
+		if len(msgs) == 0 {
+			t.Fatal("待摘要的旧消息不应为空")
 		}
-		a.session.Add(openai.ChatCompletionMessage{Role: role, Content: fmt.Sprintf("m%d", i)})
+		return "FAKE_SUMMARY", nil
 	}
 
 	a.maybeCompact(context.Background())
 
 	if !called {
-		t.Fatal("超限时应调用摘要器")
+		t.Fatal("提示越过触发线应调用摘要器")
 	}
 	msgs := a.session.Messages()
 	if msgs[0].Role != "user" || !strings.Contains(msgs[0].Content, "FAKE_SUMMARY") {
 		t.Fatalf("首条应为含摘要的消息，实际 %+v", msgs[0])
 	}
-	if a.session.Len() > a.session.maxMessages {
-		t.Fatalf("压缩后不应超过上限，实际 %d", a.session.Len())
+	if a.session.Len() >= 6 {
+		t.Fatalf("压缩后条数应下降，实际 %d", a.session.Len())
+	}
+	if a.lastPromptTokens != 0 {
+		t.Fatalf("压缩后应清零用量遥测，实际 %d", a.lastPromptTokens)
+	}
+}
+
+// 软线到触发线之间：只提醒一次、绝不压缩（避免白白打掉前缀缓存）。
+func TestMaybeCompact_SoftNoticeNoCompaction(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	cs := &captureSink{}
+	a.SetSink(cs)
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
+	addMsgs(a.session, 4, 50)
+	a.lastPromptTokens = 600 // soft(500) ≤ 600 < high(800)
+	a.summarizer = func(_ context.Context, _ []openai.ChatCompletionMessage) (string, error) {
+		t.Fatal("软线区间不应压缩")
+		return "", nil
+	}
+
+	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background()) // 再次：提醒只应出现一次
+
+	if a.session.Len() != 4 {
+		t.Fatalf("软线区间历史应不变，实际 %d", a.session.Len())
+	}
+	notices := 0
+	for _, ev := range cs.events {
+		if ev.Kind == EventNotice && strings.Contains(ev.Text, "窗口") {
+			notices++
+		}
+	}
+	if notices != 1 {
+		t.Fatalf("软线提醒应只出现一次，实际 %d", notices)
 	}
 }
 
@@ -131,12 +184,12 @@ func TestMaybeCompact_SummarizesWhenOverLimit(t *testing.T) {
 func TestMaybeCompact_FallsBackToTrimOnError(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
 	a.SetSink(&captureSink{})
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
 	a.session.maxMessages = 4
+	addMsgs(a.session, 6, 100)
+	a.lastPromptTokens = 900
 	a.summarizer = func(_ context.Context, _ []openai.ChatCompletionMessage) (string, error) {
 		return "", errors.New("boom")
-	}
-	for i := 0; i < 6; i++ {
-		a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: fmt.Sprintf("m%d", i)})
 	}
 
 	a.maybeCompact(context.Background())
@@ -151,19 +204,62 @@ func TestMaybeCompact_FallsBackToTrimOnError(t *testing.T) {
 	}
 }
 
-// 未超限不应触发压缩，历史原样不动。
-func TestMaybeCompact_NoopUnderLimit(t *testing.T) {
+// 未达软线不应触发压缩，历史原样不动。
+func TestMaybeCompact_NoopUnderTrigger(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
 	a.SetSink(&captureSink{})
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
 	a.summarizer = func(_ context.Context, _ []openai.ChatCompletionMessage) (string, error) {
-		t.Fatal("未超限不应调用摘要器")
+		t.Fatal("未达软线不应压缩")
 		return "", nil
 	}
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: "hi"})
+	a.lastPromptTokens = 100 // < soft(500)
 
 	a.maybeCompact(context.Background())
 
 	if a.session.Len() != 1 {
-		t.Fatalf("未超限历史应不变，实际 %d", a.session.Len())
+		t.Fatalf("未达阈值历史应不变，实际 %d", a.session.Len())
+	}
+}
+
+// 没有用量遥测（首轮 / provider 未回传）时不压缩，避免误判。
+func TestMaybeCompact_NoUsageNoop(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.SetSink(&captureSink{})
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
+	a.summarizer = func(_ context.Context, _ []openai.ChatCompletionMessage) (string, error) {
+		t.Fatal("无用量遥测时不应压缩")
+		return "", nil
+	}
+	addMsgs(a.session, 50, 100) // 条数很多，但没有 token 遥测
+
+	a.maybeCompact(context.Background())
+
+	if a.session.Len() != 50 {
+		t.Fatalf("无用量遥测应不压缩，实际 %d", a.session.Len())
+	}
+}
+
+// 手动 /compact 应无视比例阈值，强制压缩一次。
+func TestCompact_ManualForces(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.SetSink(&captureSink{})
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
+	addMsgs(a.session, 6, 2000) // 内容够长，即便按兜底系数也能切出旧消息
+	// lastPromptTokens 默认 0：自动压缩不会触发，手动应强制。
+	called := false
+	a.summarizer = func(_ context.Context, _ []openai.ChatCompletionMessage) (string, error) {
+		called = true
+		return "MANUAL_SUMMARY", nil
+	}
+
+	a.Compact(context.Background())
+
+	if !called {
+		t.Fatal("手动 /compact 应无视阈值强制摘要")
+	}
+	if !strings.Contains(a.session.Messages()[0].Content, "MANUAL_SUMMARY") {
+		t.Fatalf("手动压缩后首条应为摘要，实际 %+v", a.session.Messages()[0])
 	}
 }

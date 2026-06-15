@@ -59,19 +59,48 @@ func (s *Session) Trim() {
 	s.messages = append([]openai.ChatCompletionMessage(nil), s.messages[start:]...)
 }
 
-// NeedsCompaction 判断历史是否已超过上限、需要压缩（与 Trim 同阈值）。
-func (s *Session) NeedsCompaction() bool {
-	return len(s.messages) > s.maxMessages
+// minRecentKeep 是压缩后至少保留的近消息条数（即便单条就已超出 token 预算）。
+const minRecentKeep = 2
+
+// msgChars 估算一条消息占用的字符数（content + 工具调用的名字与参数），用于 token 估算。
+func msgChars(m openai.ChatCompletionMessage) int {
+	n := len(m.Content)
+	for _, tc := range m.ToolCalls {
+		n += len(tc.Function.Name) + len(tc.Function.Arguments)
+	}
+	return n
+}
+
+// CharCount 返回历史全部消息的字符数之和，供调用方按真实用量推导「token/字符」系数。
+func (s *Session) CharCount() int {
+	n := 0
+	for _, m := range s.messages {
+		n += msgChars(m)
+	}
+	return n
 }
 
 // SplitForCompaction 把历史切成「待摘要的旧消息 old」与「保留的近消息 recent」两段。
-// 保留段取末尾约 maxMessages/2 条；并跳过其开头的孤立 tool（配对感知），确保 recent
-// 自身合法、可直接续在摘要消息之后——否则孤立 tool 会与其 tool_call 失联、接口 400。
-func (s *Session) SplitForCompaction() (old, recent []openai.ChatCompletionMessage) {
-	keep := s.maxMessages / 2
+//
+// 保留段从末尾倒着累加估算 token，直到触达 tailBudget；至少保留 minRecentKeep 条。
+// tokPerChar 是「token/字符」估算系数（由真实用量推导，见 Agent.tokPerChar），让保留量
+// 按 token 而非条数对齐，从而压缩后体积可控、与触发判定一致。
+// 配对感知：保留段绝不以孤立 tool 开头，否则它与对应 tool_call 失联、接口直接 400。
+func (s *Session) SplitForCompaction(tailBudget int, tokPerChar float64) (old, recent []openai.ChatCompletionMessage) {
 	n := len(s.messages)
-	if n <= keep {
-		return nil, append([]openai.ChatCompletionMessage(nil), s.messages...)
+	if n == 0 {
+		return nil, nil
+	}
+	keep, tokens := 0, 0
+	for i := n - 1; i >= 0; i-- {
+		tokens += int(float64(msgChars(s.messages[i])) * tokPerChar)
+		keep++
+		if tokens >= tailBudget && keep >= minRecentKeep {
+			break
+		}
+	}
+	if keep > n {
+		keep = n
 	}
 	cut := n - keep
 	for cut < n && s.messages[cut].Role == "tool" {

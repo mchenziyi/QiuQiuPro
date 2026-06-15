@@ -171,6 +171,8 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 			Model:    a.model,
 			Messages: messages,
 			Tools:    a.toolDefinitions(),
+			// 让流式响应在末尾带上用量统计（prompt_tokens 等），用于按窗口比例触发压缩。
+			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 		},
 	)
 	if err != nil {
@@ -179,6 +181,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	defer stream.Close()
 
 	var content string
+	var promptTokens int
 	toolCallAcc := make(map[int]openai.ToolCall)
 
 	for {
@@ -188,6 +191,11 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		}
 		if err != nil {
 			return openai.ChatCompletionMessage{}, err
+		}
+
+		// 用量统计单独走一个 choices 为空的尾包，必须在 continue 之前捕获。
+		if resp.Usage != nil && resp.Usage.PromptTokens > 0 {
+			promptTokens = resp.Usage.PromptTokens
 		}
 
 		if len(resp.Choices) == 0 {
@@ -227,6 +235,11 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	if content != "" {
 		a.emitToken("\n")
+	}
+
+	// 记录这次请求的真实 prompt token 数，供下一轮 maybeCompact 按窗口比例判定。
+	if promptTokens > 0 {
+		a.lastPromptTokens = promptTokens
 	}
 
 	msg := openai.ChatCompletionMessage{
