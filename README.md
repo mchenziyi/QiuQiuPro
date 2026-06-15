@@ -99,9 +99,15 @@ go run main.go
 | `/maxsteps [n]` | 设置单次连续计划执行的 step 上限；`0` 表示不限制 |
 | `/pause` | 请求协作式暂停：当前 step 完成后暂停 |
 | `/resume` | 从上次暂停的 Plan step 继续执行 |
+| `/memory` | 查看模型自主沉淀的长期记忆（仅偏好/规则）|
+| `/forget <id>` | 删除一条长期记忆 |
 | `exit` / `quit` | 退出 |
 
 所有命令以 `/` 开头。不在列表中的输入会作为正常任务交给 Agent 处理。
+
+长期记忆只保存**偏好/规则**，不做知识型 RAG。写入不是手动命令，而是模型在识别到长期偏好、
+默认行为或项目规则时主动调用 `remember_rule` 工具；用户可用 `/memory` 审计、`/forget` 删除。
+全局记忆写入 `~/.qiuqiu/memory.json`，项目记忆写入 `.reasonix/memory.json`。
 
 ---
 

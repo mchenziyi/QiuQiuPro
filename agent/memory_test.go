@@ -2,10 +2,168 @@ package agent
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	openai "github.com/sashabaranov/go-openai"
+
+	"agentdemo/tool"
 )
+
+func TestMemoryStore_AddListForget(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+
+	mem, err := store.Add(MemoryScopeGlobal, MemoryKindPreference, "以后默认用中文回答", "model")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mem.ID == "" || mem.Scope != MemoryScopeGlobal || mem.Kind != MemoryKindPreference {
+		t.Fatalf("记忆字段不完整：%+v", mem)
+	}
+
+	all, err := store.ListEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].Content != "以后默认用中文回答" {
+		t.Fatalf("ListEnabled 错误：%+v", all)
+	}
+
+	ok, err := store.Forget(mem.ID)
+	if err != nil || !ok {
+		t.Fatalf("Forget 失败：ok=%v err=%v", ok, err)
+	}
+	all, err = store.ListEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("删除后不应还有启用记忆：%+v", all)
+	}
+}
+
+func TestMemoryStore_RejectsKnowledgeMemory(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+
+	if _, err := store.Add(MemoryScopeProject, "knowledge", "Gin 路由写在 routers 目录", "model"); err == nil {
+		t.Fatal("偏好/规则记忆不应接受 knowledge 类型")
+	}
+	if _, err := store.Add(MemoryScopeProject, MemoryKindProjectRule, strings.Repeat("x", maxMemoryContentLen+1), "model"); err == nil {
+		t.Fatal("过长记忆应被拒绝，避免保存大段知识/代码")
+	}
+}
+
+func TestMemoryStore_RenderBlockStable(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+	if _, err := store.Add(MemoryScopeProject, MemoryKindProjectRule, "本项目只支持 DeepSeek", "model"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.Add(MemoryScopeGlobal, MemoryKindPreference, "提交信息默认中文", "model"); err != nil {
+		t.Fatal(err)
+	}
+
+	block, err := store.RenderPromptBlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"## 长期记忆（偏好/规则）", "全局偏好", "提交信息默认中文", "项目规则", "本项目只支持 DeepSeek"} {
+		if !strings.Contains(block, want) {
+			t.Fatalf("记忆块缺少 %q：\n%s", want, block)
+		}
+	}
+	if strings.Index(block, "全局偏好：") > strings.Index(block, "项目规则：") {
+		t.Fatalf("渲染顺序应稳定：全局偏好在项目前，实际\n%s", block)
+	}
+}
+
+func TestAgent_BuildSystemPromptIncludesMemory(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+	if _, err := store.Add(MemoryScopeGlobal, MemoryKindPreference, "回答保持简洁", "model"); err != nil {
+		t.Fatal(err)
+	}
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.sysPrompt = "BASE"
+	a.SetMemoryStore(store)
+
+	got := a.BuildSystemPrompt()
+	if !strings.Contains(got, "BASE") || !strings.Contains(got, "回答保持简洁") {
+		t.Fatalf("system prompt 应包含基础提示词与长期记忆：\n%s", got)
+	}
+}
+
+func TestRememberRuleTool_ModelWritesPreference(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.SetMemoryStore(store)
+	a.RegisterTool(a.NewRememberRuleTool())
+
+	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+		Name:      memoryToolName,
+		Arguments: `{"scope":"global","kind":"preference","content":"以后默认用中文回答","reason":"用户表达了长期偏好"}`,
+	}})
+	if !strings.Contains(got, "已保存长期记忆") {
+		t.Fatalf("工具应保存偏好记忆，实际 %q", got)
+	}
+	all, err := store.ListEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 1 || all[0].Source != "model" || all[0].Content != "以后默认用中文回答" {
+		t.Fatalf("模型工具写入错误：%+v", all)
+	}
+}
+
+func TestRememberRuleTool_RejectsKnowledge(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.SetMemoryStore(store)
+	a.RegisterTool(a.NewRememberRuleTool())
+
+	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+		Name:      memoryToolName,
+		Arguments: `{"scope":"project","kind":"knowledge","content":"某函数在 run.go","reason":"项目知识"}`,
+	}})
+	if !strings.Contains(got, "只支持保存 preference 或 project_rule") {
+		t.Fatalf("知识型记忆应被拒绝，实际 %q", got)
+	}
+}
+
+func TestRememberRuleTool_DeniedInReadOnlyMode(t *testing.T) {
+	store := NewMemoryStore(t.TempDir()+"/global.json", t.TempDir()+"/project.json")
+	a := newDispatchAgent(t, ReadOnlyGate{})
+	a.SetMemoryStore(store)
+	a.RegisterTool(a.NewRememberRuleTool())
+
+	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+		Name:      memoryToolName,
+		Arguments: `{"scope":"global","kind":"preference","content":"以后默认用中文回答","reason":"用户表达了长期偏好"}`,
+	}})
+	if !strings.Contains(got, "只读模式禁止") {
+		t.Fatalf("只读模式应拒绝写记忆，实际 %q", got)
+	}
+	all, err := store.ListEnabled()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(all) != 0 {
+		t.Fatalf("只读模式不应写入记忆：%+v", all)
+	}
+}
+
+func TestMemoryTool_AvailableWithSkillWhitelist(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.allTools["read_file"] = tool.Tool{Name: "read_file"}
+	a.allTools[memoryToolName] = a.NewRememberRuleTool()
+	a.activeTools = []string{"read_file"}
+
+	var names []string
+	for _, t := range a.availableTools() {
+		names = append(names, t.Name)
+	}
+	if strings.Join(names, ",") != "read_file,"+memoryToolName {
+		t.Fatalf("Skill 白名单下仍应追加 remember_rule，实际 %+v", names)
+	}
+}
 
 // assertValidToolPairing 校验消息序列对「工具调用 / 工具结果」是配对合法的：
 // 每条 tool 结果之前，都必须出现过携带同一 ID tool_call 的 assistant 消息。

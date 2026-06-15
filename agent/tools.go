@@ -36,10 +36,15 @@ func (a *Agent) availableTools() []tool.Tool {
 		return tools
 	}
 	var tools []tool.Tool
+	seen := map[string]bool{}
 	for _, name := range a.activeTools {
 		if t, ok := a.allTools[name]; ok {
 			tools = append(tools, t)
+			seen[name] = true
 		}
+	}
+	if t, ok := a.allTools[memoryToolName]; ok && !seen[memoryToolName] {
+		tools = append(tools, t)
 	}
 	return tools
 }
@@ -77,5 +82,8 @@ func IsHighRiskTool(name string) bool {
 // 集合与 ReadOnlyGate 放行的一致：非高危（写文件 / 编辑 / 执行命令）且不改动仓库
 // （git_commit）。新增改动类工具时只需更新 highRiskTools，这里与只读门会一并跟上。
 func isReadOnlyTool(name string) bool {
+	if name == memoryToolName {
+		return false
+	}
 	return !IsHighRiskTool(name) && name != "git_commit"
 }

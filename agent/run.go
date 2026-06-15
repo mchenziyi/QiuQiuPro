@@ -31,7 +31,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		// 历史超限时先压缩（LLM 摘要旧消息），避免请求超出上下文窗口。
 		a.maybeCompact(ctx)
 		// 每轮都从唯一日志重建请求（system 单独前置，不入历史）。
-		msg, err := a.streamChat(ctx, a.session.BuildRequest(a.sysPrompt))
+		msg, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
 			return "", fmt.Errorf("LLM 调用失败: %w", err)

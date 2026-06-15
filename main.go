@@ -98,6 +98,7 @@ func main() {
 	a := agent.New(apiKey, model)
 	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
+	a.RegisterTool(a.NewRememberRuleTool())
 	a.Quiet = *quiet
 	// 上下文窗口可经环境变量覆盖（默认贴合 DeepSeek V4 的 1M）；切到更小窗口的模型时务必调小。
 	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_CONTEXT_WINDOW")); v != "" {
@@ -346,6 +347,29 @@ func main() {
 		Name: "usage", Description: "显示本次会话的 token 用量（输入 / 缓存命中 / 输出 / 思考 / 合计）与估算费用。用法：/usage",
 		Handler: func(args string) bool {
 			a.ReportUsage()
+			return true
+		},
+	})
+
+	// /memory — 查看模型自主沉淀的偏好/规则长期记忆（写入由 remember_rule 工具完成，无手动 /remember）。
+	registry.Register(command.Command{
+		Name: "memory", Description: "查看长期记忆（仅偏好/规则；写入由模型自主判断）。用法：/memory",
+		Handler: func(args string) bool {
+			fmt.Println(a.MemoryList())
+			return true
+		},
+	})
+
+	// /forget <id> — 删除一条长期记忆，给用户审计和纠错的出口。
+	registry.Register(command.Command{
+		Name: "forget", Description: "删除一条长期记忆。用法：/forget <memory_id>",
+		Handler: func(args string) bool {
+			id := strings.TrimSpace(args)
+			if id == "" {
+				fmt.Println("  ⚠️  用法：/forget <memory_id>，可先用 /memory 查看")
+				return true
+			}
+			fmt.Println(a.ForgetMemory(id))
 			return true
 		},
 	})

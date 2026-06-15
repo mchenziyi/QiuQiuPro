@@ -193,6 +193,18 @@
 
 ## 🎯 长期规划
 
-### 17. 长期记忆（偏好型）
-### 18. RAG / 知识型长期记忆
+### ✅ 17. 长期记忆（偏好/规则型）— 已完成
+- 只保存偏好/规则，不保存知识型内容、代码片段、临时任务细节、日志或秘密
+- 写入由模型自主判断：新增受限工具 `remember_rule`，当用户表达长期偏好、默认行为或项目规则时由模型主动调用
+- 不提供 `/remember` 手动写入命令；保留 `/memory` 查看与 `/forget <id>` 删除，保证透明和可纠错
+- 两层存储：全局 `~/.qiuqiu/memory.json` + 项目 `.reasonix/memory.json`
+- system prompt 稳定注入“长期记忆（偏好/规则）”块；切换 Skill 后 `remember_rule` 仍可用
+- 只读模式下拒绝写入记忆；默认模式下不弹高危确认，避免打断模型自主沉淀
+- 详见 `docs/25-preference-memory.md`
+- 文件：`agent/long_memory.go`、`agent/agent.go`、`agent/run.go`、`agent/tools.go`、`main.go`、`agent/memory_test.go`
+
+### 🚫 18. RAG / 知识型长期记忆 — 不做
+- 用户已明确：coding Agent 不需要知识型长期记忆
+- 不引入向量库、embedding、知识库索引或自动保存项目知识，避免污染上下文与增加复杂度
+
 ### 19. 感知层规范化
