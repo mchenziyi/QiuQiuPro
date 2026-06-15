@@ -53,10 +53,12 @@
 
 ## 🥇 第一梯队（先做，见效快）
 
-### 1. web_fetch 工具
-- HTTP GET 请求，抓取网页内容（查文档、查 API、搜 Stack Overflow）
-- 难度：★☆☆☆☆ | 最实用，一行 HTTP 请求
-- 参考：Go `net/http` 包
+### ✅ 1. web_fetch 工具 — 已完成
+- HTTP GET 抓取 URL 内容（查文档 / API / 资料）；缺协议自动补 https
+- 三重上限：超时 15s + 读取 1MB + 输出 16000 字符截断；非 2xx 仍返回正文
+- 单测用 httptest，零外部依赖（normalizeURL 纯函数 + fetchURL 6 例）
+- 详见 `docs/11-web-fetch.md`
+- 文件：`tool/web_fetch.go`、`tool/struct.go`、`tool/web_fetch_test.go`
 
 ### 2. 更好的 run_shell
 - 交互式执行：能看中间输出、跑耗时命令时边跑边显示
