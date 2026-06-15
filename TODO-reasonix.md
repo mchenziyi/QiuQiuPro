@@ -142,12 +142,17 @@
 - 文件：`agent/agent.go`、`agent/tools.go`、`agent/skill.go`、`agent/checkpoint.go`、`agent/gate.go`、`agent/sink.go`
 - 难度：★★☆☆☆
 
-### 12. LLM Provider 抽象
-- 支持 DeepSeek / Claude / Ollama 切换
+### ⏸️ 12. LLM Provider 抽象 — 暂缓（当前只需支持 DeepSeek）
+- 多 Provider（Claude / Ollama）切换暂无需求；保留待将来需要时再做
 - 难度：★★★★☆
 
-### 13. 上下文压缩
-- 超限时让 LLM 总结旧消息
+### ✅ 13. 上下文压缩 — 已完成
+- 超限时不再直接丢弃，而是让 LLM 把旧消息总结成摘要、用「摘要 + 近消息」替换历史
+- Session 加压缩原语：`NeedsCompaction` / `SplitForCompaction`（配对感知）/ `ApplyCompaction`
+- Agent `maybeCompact` 编排，接入 Run 循环顶部；摘要失败安全退化为 `Trim`
+- 摘要器抽成可注入函数缝（默认 `llmSummarize`），测试无需联网即可全链路验证
+- 详见 `docs/21-context-compaction.md`
+- 文件：`agent/session.go`、`agent/compact.go`、`agent/agent.go`、`agent/run.go`、`agent/compact_test.go`
 - 难度：★★★★☆
 
 ### 14. Token 用量追踪

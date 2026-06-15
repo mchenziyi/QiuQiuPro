@@ -24,6 +24,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 
 	maxLoops := 15
 	for i := 0; i < maxLoops; i++ {
+		// 历史超限时先压缩（LLM 摘要旧消息），避免请求超出上下文窗口。
+		a.maybeCompact(ctx)
 		// 每轮都从唯一日志重建请求（system 单独前置，不入历史）。
 		msg, err := a.streamChat(ctx, a.session.BuildRequest(a.sysPrompt))
 		if err != nil {

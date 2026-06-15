@@ -40,6 +40,7 @@ type Agent struct {
 	in            *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
 	gate          Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
 	sink          Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
+	summarizer    summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
 }
 
 const maxMessages = 100
@@ -63,6 +64,7 @@ func New(apiKey, model string) *Agent {
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
 	}
+	a.summarizer = a.llmSummarize // 默认摘要器：走真实 LLM
 	a.RestoreFromCheckpoint()
 	return a
 }

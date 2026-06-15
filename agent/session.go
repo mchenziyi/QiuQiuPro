@@ -59,6 +59,43 @@ func (s *Session) Trim() {
 	s.messages = append([]openai.ChatCompletionMessage(nil), s.messages[start:]...)
 }
 
+// NeedsCompaction 判断历史是否已超过上限、需要压缩（与 Trim 同阈值）。
+func (s *Session) NeedsCompaction() bool {
+	return len(s.messages) > s.maxMessages
+}
+
+// SplitForCompaction 把历史切成「待摘要的旧消息 old」与「保留的近消息 recent」两段。
+// 保留段取末尾约 maxMessages/2 条；并跳过其开头的孤立 tool（配对感知），确保 recent
+// 自身合法、可直接续在摘要消息之后——否则孤立 tool 会与其 tool_call 失联、接口 400。
+func (s *Session) SplitForCompaction() (old, recent []openai.ChatCompletionMessage) {
+	keep := s.maxMessages / 2
+	n := len(s.messages)
+	if n <= keep {
+		return nil, append([]openai.ChatCompletionMessage(nil), s.messages...)
+	}
+	cut := n - keep
+	for cut < n && s.messages[cut].Role == "tool" {
+		cut++
+	}
+	old = append([]openai.ChatCompletionMessage(nil), s.messages[:cut]...)
+	recent = append([]openai.ChatCompletionMessage(nil), s.messages[cut:]...)
+	return old, recent
+}
+
+// ApplyCompaction 用「摘要消息 + 近消息」替换历史。
+// summary 非空时，前置一条 user 角色的摘要消息（无 tool_calls，不影响配对）；
+// summary 为空则退化为只保留近消息（等价一次裁剪）。
+func (s *Session) ApplyCompaction(summary string, recent []openai.ChatCompletionMessage) {
+	msgs := make([]openai.ChatCompletionMessage, 0, len(recent)+1)
+	if summary != "" {
+		msgs = append(msgs, openai.ChatCompletionMessage{
+			Role:    "user",
+			Content: "（以下是早前对话的摘要，供你延续上下文）\n" + summary,
+		})
+	}
+	s.messages = append(msgs, recent...)
+}
+
 // Snapshot 把历史序列化为 JSON，用于存档 checkpoint。
 func (s *Session) Snapshot() (string, error) {
 	data, err := json.Marshal(s.messages)
