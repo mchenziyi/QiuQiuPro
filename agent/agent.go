@@ -56,6 +56,7 @@ const checkpointInterval = 5
 func New(apiKey, model string) *Agent {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = "https://api.deepseek.com"
+	config.HTTPClient = newDeepSeekHTTPClient() // 关闭 V4 默认 thinking 模式，沿用非思考行为与成本
 	a := &Agent{
 		client:      openai.NewClientWithConfig(config),
 		model:       model,

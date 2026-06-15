@@ -111,7 +111,7 @@ type Rule struct {
 ```go
 type Agent struct {
     client       *openai.Client      // LLM 客户端（go-openai 封装的 HTTP 调用）
-    model        string              // 模型名，如 "deepseek-chat"
+    model        string              // 模型名，如 "deepseek-v4-flash"
     allTools     map[string]Tool     // 全部注册的工具（不随 Skill 改变）
     activeTools  []string            // 当前 Skill 允许的工具（nil = 全部可用）
     messages     []ChatMessage       // 对话历史（跨多轮对话累积）

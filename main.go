@@ -78,7 +78,13 @@ func main() {
 	stdin := bufio.NewReader(os.Stdin)
 
 	apiKey := getAPIKey(stdin)
-	a := agent.New(apiKey, "deepseek-chat")
+	// 默认 deepseek-v4-flash（旧 deepseek-chat 将于 2026-07-24 下线）；可经环境变量切换为
+	// deepseek-v4-pro 等。注意：V4 默认开启 thinking，客户端已统一关闭以沿用非思考行为与成本。
+	model := "deepseek-v4-flash"
+	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL")); v != "" {
+		model = v
+	}
+	a := agent.New(apiKey, model)
 	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.Quiet = *quiet
