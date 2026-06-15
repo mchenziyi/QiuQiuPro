@@ -271,6 +271,30 @@ func main() {
 		},
 	})
 
+	// /readonly [on|off] — 切换只读模式（拒绝一切写操作）
+	registry.Register(command.Command{
+		Name: "readonly", Description: "切换只读模式：on 拒绝一切写 / 执行 / 提交操作，off 恢复默认（高危确认）。用法：/readonly [on|off]",
+		Handler: func(args string) bool {
+			switch strings.ToLower(strings.TrimSpace(args)) {
+			case "on":
+				a.SetReadOnly(true)
+				fmt.Println("  🔒 已开启只读模式：写文件 / 编辑 / 运行命令 / 提交 将被拒绝")
+			case "off":
+				a.SetReadOnly(false)
+				fmt.Println("  🔓 已关闭只读模式：恢复默认（高危操作需确认）")
+			case "":
+				state := "关闭"
+				if a.IsReadOnly() {
+					state = "开启"
+				}
+				fmt.Printf("  当前只读模式：%s（权限门：%s）。用法：/readonly on|off\n", state, a.GateName())
+			default:
+				fmt.Println("  ⚠️  用法：/readonly on|off")
+			}
+			return true
+		},
+	})
+
 	fmt.Printf("\n🤖 球球 Agent 已启动 | Skill：[%s] 模式：[%s]（输入 /help 查看所有命令）\n",
 		a.CurrentSkillName(), a.CurrentMode())
 	fmt.Println(strings.Repeat("─", 50))
@@ -278,6 +302,9 @@ func main() {
 	// ========== 交互式对话循环 ==========
 	for {
 		modeTag := strings.ToUpper(a.CurrentMode())
+		if a.IsReadOnly() {
+			modeTag = "🔒" + modeTag
+		}
 		fmt.Printf("\n🧑 [%s] 你: ", modeTag)
 		line, ok := a.ReadLine()
 		if !ok {

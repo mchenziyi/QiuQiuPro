@@ -82,13 +82,18 @@
 - 详见 `docs/14-cleanup-command.md`
 - 文件：`cleanup/cleanup.go`、`cleanup/cleanup_test.go`、`agent/input.go`、`main.go`
 
-### 5. Gate 接口（权限系统）
-- 用可插拔 Gate 替换硬编码的 fmt.Scanln
-- 难度：★★★☆☆
+### ✅ 5. Gate 接口（权限系统）— 已完成（与 #6 合并）
+- 抽出可插拔 Gate 接口，替换 executeToolCall 里硬编码的「高危即确认」
+- 三实现：ConfirmHighRiskGate（默认，行为不变）/ ReadOnlyGate / AllowAllGate
+- 作用于 ask + plan 同一咽喉（executeToolCall）；子 Agent 继承父级门
+- 详见 `docs/15-gate-readonly.md`
+- 文件：`agent/gate.go`、`agent/run.go`、`agent/agent.go`、`main.go`、`agent/gate_test.go`
 
-### 6. Plan Mode（只读模式）
-- 拦截非只读工具调用，LLM 先出方案再动手
-- 难度：★★☆☆☆
+### ✅ 6. Plan Mode（只读模式）— 已完成（与 #5 合并）
+- ReadOnlyGate 拦截一切改动类工具（写 / 编辑 / 执行 / 提交），读类放行；拒绝时回灌引导模型改用只读手段
+- /readonly on|off 切换；主循环提示加 🔒 标识
+- 边界：MCP 外部写工具无法自动识别（需工具读写元数据）
+- 详见 `docs/15-gate-readonly.md`
 
 ## 🥈 第二梯队
 

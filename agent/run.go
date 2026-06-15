@@ -84,9 +84,20 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		return result
 	}
 
-	// 高危工具：执行前让用户确认（走统一输入读取器，避免与主循环混用 stdin）。
-	if IsHighRiskTool(tc.Function.Name) {
-		a.debugf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+	// 经由权限门裁决：放行 / 确认 / 拒绝。Gate 可插拔（默认高危确认，可切换只读等）。
+	gate := a.gate
+	if gate == nil {
+		gate = ConfirmHighRiskGate{}
+	}
+	switch decision, reason := gate.Check(tc.Function.Name, tc.Function.Arguments); decision {
+	case GateDeny:
+		// 拒绝也要回灌一条结果，让模型据此改用只读方式，而非中断整轮。
+		result := fmt.Sprintf("已拒绝执行 %s：%s。请改用只读手段（如 read_file / grep / code_search）", tc.Function.Name, reason)
+		fmt.Printf("  🚫 %s\n", result)
+		return result
+	case GateConfirm:
+		// 确认走统一输入读取器，避免与主循环混用 stdin。
+		a.debugf("  🔐 %s：%s(%s)\n", reason, tc.Function.Name, tc.Function.Arguments)
 		fmt.Print("  确认执行？[Y/n] ")
 		if !a.confirm() {
 			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)

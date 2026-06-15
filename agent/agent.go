@@ -32,6 +32,7 @@ type Agent struct {
 	Mode          string        // 运行模式："plan"（默认）| "ask"（直接问答）
 	toolCallCount int
 	in            *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
+	gate          Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
 }
 
 const maxMessages = 100
@@ -49,6 +50,7 @@ func New(apiKey, model string) *Agent {
 		session:     fmt.Sprintf("session_%d", time.Now().Unix()),
 		cmdRegistry: command.NewRegistry(),
 		Mode:        "plan",
+		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sysPrompt:   "在输出结论之前，请先一步步展示你的推理过程。",
 	}
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
@@ -98,6 +100,32 @@ func (a *Agent) SetMode(mode string) {
 }
 
 func (a *Agent) CurrentMode() string { return a.Mode }
+
+// SetGate 替换权限门。
+func (a *Agent) SetGate(g Gate) { a.gate = g }
+
+// GateName 返回当前权限门名字（confirm / read-only / allow-all）。
+func (a *Agent) GateName() string {
+	if a.gate == nil {
+		return "confirm"
+	}
+	return a.gate.Name()
+}
+
+// SetReadOnly 开关只读模式：开启用 ReadOnlyGate，关闭恢复默认的 ConfirmHighRiskGate。
+func (a *Agent) SetReadOnly(on bool) {
+	if on {
+		a.gate = ReadOnlyGate{}
+	} else {
+		a.gate = ConfirmHighRiskGate{}
+	}
+}
+
+// IsReadOnly 当前是否处于只读模式。
+func (a *Agent) IsReadOnly() bool {
+	_, ok := a.gate.(ReadOnlyGate)
+	return ok
+}
 
 func (a *Agent) CurrentSkillName() string {
 	if a.currentSkill != nil {
@@ -190,7 +218,8 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		store:    a.store,
 		session:  fmt.Sprintf("%s_sub_%d", a.session, time.Now().UnixNano()),
 		Quiet:    a.Quiet,
-		in:       a.in, // 子 Agent 共用父级的输入读取器
+		in:       a.in,   // 子 Agent 共用父级的输入读取器
+		gate:     a.gate, // 子 Agent 继承父级权限门（如只读模式）
 	}
 	return sub.Run(ctx, task)
 }
