@@ -97,9 +97,11 @@
 
 ## 🥈 第二梯队
 
-### 7. Skill 人格切换（扩展）
-- 扩充更多 Skill：pm / backend_dev / tester / devops
-- 难度：★★☆☆☆
+### ✅ 7. Skill 人格切换（扩展）— 已完成
+- 新增 4 个 Skill：pm / backend_dev / tester / devops，工具白名单按角色收窄
+- 新增校验测试：加载所有 Skill + 必填字段 + tool_whitelist 工具名真实存在（防笔误被静默过滤）
+- 详见 `docs/16-skill-personas.md`
+- 文件：`prompt/skills/{pm,backend_dev,tester,devops}.json`、`agent/skill_bundle_test.go`
 
 ### 8. Session 独立管理
 - messages 从 run.go 中拆出，交给独立 Session 对象
