@@ -67,10 +67,13 @@
 - 详见 `docs/12-better-run-shell.md`
 - 文件：`tool/shell_tools.go`、`tool/shell_tools_test.go`
 
-### 3. code_search（语义代码搜索）
-- 不是 grep，而是找到符号定义/引用/调用链
-- 可以用 go/* 包解析 AST 或集成 codegraph
-- 难度：★★★☆☆
+### ✅ 3. code_search（语义代码搜索）— 已完成（定义+引用子集）
+- 基于 go/ast 解析，按标识符搜索：定位 func/method/type/var/const 定义 + 所有引用
+- 两遍遍历：先收集定义并记位置，再把同名标识符里非定义的作为引用；比 grep 准
+- searchSymbolInSource 直接吃源码字节、零文件系统依赖，纯单测覆盖 5 种 kind
+- 边界：未做类型解析与调用链（需 go/types 或 codegraph），留待后续
+- 详见 `docs/13-code-search.md`
+- 文件：`tool/code_search.go`、`tool/struct.go`、`tool/code_search_test.go`
 
 ### 4. 熵管理 — /cleanup 命令
 - 扫描目录 → 列出垃圾文件 → 用户确认后删除
