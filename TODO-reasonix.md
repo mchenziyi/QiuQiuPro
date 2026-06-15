@@ -60,10 +60,12 @@
 - 详见 `docs/11-web-fetch.md`
 - 文件：`tool/web_fetch.go`、`tool/struct.go`、`tool/web_fetch_test.go`
 
-### 2. 更好的 run_shell
-- 交互式执行：能看中间输出、跑耗时命令时边跑边显示
-- 退出码分析：工具退出后能自动分析输出判断是否成功
-- 难度：★★★☆☆
+### ✅ 2. 更好的 run_shell — 已完成
+- 流式输出：MultiWriter 一路实时打控制台、一路捕获回灌 LLM（同一 writer 无竞态）
+- 退出码判定：✅/❌ + 真实退出码（errors.As 取 *exec.ExitError），区分失败 / 无法启动
+- 超时保护（默认 5min，CommandContext 强制终止）+ 输出三重上限（1MB 捕获 / 16000 字符回灌）
+- 详见 `docs/12-better-run-shell.md`
+- 文件：`tool/shell_tools.go`、`tool/shell_tools_test.go`
 
 ### 3. code_search（语义代码搜索）
 - 不是 grep，而是找到符号定义/引用/调用链
