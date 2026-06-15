@@ -75,9 +75,12 @@
 - 详见 `docs/13-code-search.md`
 - 文件：`tool/code_search.go`、`tool/struct.go`、`tool/code_search_test.go`
 
-### 4. 熵管理 — /cleanup 命令
-- 扫描目录 → 列出垃圾文件 → 用户确认后删除
-- 难度：★★☆☆☆
+### ✅ 4. 熵管理 — /cleanup 命令 — 已完成
+- 新增可测的 cleanup 包：IsJunk / Scan / Delete / FormatList / HumanSize
+- /cleanup [目录]：扫描 → 列出（含大小合计）→ Confirm 确认 → 删除并汇报
+- 安全：Scan 绝不进入 .git；确认复用导出的 Agent.Confirm()（即 P1 已测 confirm）
+- 详见 `docs/14-cleanup-command.md`
+- 文件：`cleanup/cleanup.go`、`cleanup/cleanup_test.go`、`agent/input.go`、`main.go`
 
 ### 5. Gate 接口（权限系统）
 - 用可插拔 Gate 替换硬编码的 fmt.Scanln

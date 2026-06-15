@@ -11,6 +11,7 @@ import (
 	"flag"
 
 	"agentdemo/agent"
+	"agentdemo/cleanup"
 	"agentdemo/command"
 	"agentdemo/event"
 	"agentdemo/mcp"
@@ -220,6 +221,39 @@ func main() {
 				}
 			}
 			fmt.Printf("❌ 未找到 Skill：%s（输入 /use 查看所有可用 Skill）\n", args)
+			return true
+		},
+	})
+
+	// /cleanup [目录] — 扫描并清理垃圾文件
+	registry.Register(command.Command{
+		Name: "cleanup", Description: "扫描并清理垃圾文件（.DS_Store / *.tmp / *.bak / *.swp 等）。用法：/cleanup [目录]",
+		Handler: func(args string) bool {
+			dir := strings.TrimSpace(args)
+			if dir == "" {
+				dir = "."
+			}
+			files, err := cleanup.Scan(dir)
+			if err != nil {
+				fmt.Printf("❌ 扫描失败：%v\n", err)
+				return true
+			}
+			if len(files) == 0 {
+				fmt.Printf("✨ %s 下没有发现垃圾文件\n", dir)
+				return true
+			}
+			fmt.Printf("🗑️  在 %s 下发现 %d 个垃圾文件：\n", dir, len(files))
+			fmt.Print(cleanup.FormatList(files))
+			fmt.Print("  确认全部删除？[Y/n] ")
+			if !a.Confirm() {
+				fmt.Println("  已取消，未删除任何文件")
+				return true
+			}
+			deleted, errs := cleanup.Delete(files)
+			fmt.Printf("  ✅ 已删除 %d 个文件\n", deleted)
+			for _, e := range errs {
+				fmt.Printf("  ⚠️  %v\n", e)
+			}
 			return true
 		},
 	})

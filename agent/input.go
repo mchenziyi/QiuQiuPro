@@ -42,3 +42,6 @@ func (a *Agent) confirm() bool {
 	s := strings.ToLower(strings.TrimSpace(line))
 	return s != "n" && s != "no"
 }
+
+// Confirm 是 confirm 的导出包装，供 main 包的命令（如 /cleanup）复用同一套确认逻辑。
+func (a *Agent) Confirm() bool { return a.confirm() }
