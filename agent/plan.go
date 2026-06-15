@@ -22,6 +22,16 @@ type Plan struct {
 	Steps []Step `json:"steps"`
 }
 
+// stripCodeFence 去掉 LLM 输出里包裹 JSON 的 ``` 代码块围栏
+// （```json ... ``` 或 ``` ... ```），返回纯 JSON 文本，便于后续 Unmarshal。
+func stripCodeFence(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "```json")
+	s = strings.TrimPrefix(s, "```")
+	s = strings.TrimSuffix(s, "```")
+	return strings.TrimSpace(s)
+}
+
 // GeneratePlan 让 LLM 把目标拆成步骤
 func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 	var toolList []string
@@ -59,12 +69,7 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 		return nil, fmt.Errorf("规划失败：%w", err)
 	}
 
-	content := resp.Choices[0].Message.Content
-	content = strings.TrimSpace(content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
+	content := stripCodeFence(resp.Choices[0].Message.Content)
 
 	type stepJSON struct {
 		ID   int    `json:"id"`
@@ -130,10 +135,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 		return plan, nil
 	}
 
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
+	content = stripCodeFence(content)
 
 	type stepJSON struct {
 		ID   int    `json:"id"`
@@ -289,12 +291,7 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflect
 		return nil, fmt.Errorf("重规划失败：%w", rerr)
 	}
 
-	content := resp.Choices[0].Message.Content
-	content = strings.TrimSpace(content)
-	content = strings.TrimPrefix(content, "```json")
-	content = strings.TrimPrefix(content, "```")
-	content = strings.TrimSuffix(content, "```")
-	content = strings.TrimSpace(content)
+	content := stripCodeFence(resp.Choices[0].Message.Content)
 
 	type stepJSON struct {
 		ID   int    `json:"id"`

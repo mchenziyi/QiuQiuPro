@@ -42,9 +42,12 @@
 - 详见 `docs/09-gomod-hygiene.md`
 - 文件：`go.mod`、`README.md`
 
-### P3. 缺少测试（工程卫生）
-- 有 `/test` 命令但仓库无任何 `_test.go`
-- 建议：先给核心循环补单测（`Run` / `GeneratePlan` / `streamChat` 的 toolcall 增量拼装）
+### ✅ P3. 缺少测试（工程卫生）— 已修复
+- 补核心纯函数单测：agent（`IsHighRiskTool` / `truncate` / `stripCodeFence`，加上 P0/P1 的 memory/input）、tool（`edit_file_block` 4 例）；现共 15 个测试函数全绿
+- 重构：抽出 `stripCodeFence`，`plan.go` 里重复 3 次的围栏清洗合一
+- **附带挖出并修掉 P0 级 bug**：`edit_file_block` 结构体缺 json tag，`old_block`/`new_block` 绑空 → 永远「出现多次」，旗舰编辑工具实质不可用
+- 详见 `docs/10-tests-and-edit-fix.md`
+- 文件：`tool/edit_tools.go`、`tool/edit_tools_test.go`、`agent/plan.go`、`agent/agent_test.go`
 
 ---
 

@@ -20,7 +20,13 @@ func NewEditFileBlockTool() Tool {
 			}, "required": []string{"path", "old_block", "new_block"},
 		},
 		Execute: func(args string) string {
-			var p struct{ Path, OldBlock, NewBlock string }
+			// 必须带 json tag：schema 用 snake_case（old_block/new_block），
+			// 而 Go 的大小写不敏感匹配不会忽略下划线，无 tag 会绑不上、导致永远「出现多次」。
+			var p struct {
+				Path     string `json:"path"`
+				OldBlock string `json:"old_block"`
+				NewBlock string `json:"new_block"`
+			}
 			json.Unmarshal([]byte(args), &p)
 			data, err := os.ReadFile(p.Path)
 			if err != nil {
