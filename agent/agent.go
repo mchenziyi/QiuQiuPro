@@ -49,6 +49,10 @@ type Agent struct {
 	softCompactRatio   float64 // 达到该比例时提醒一次（不压缩）
 	lastPromptTokens   int     // 上一轮 LLM 调用的真实 prompt_tokens（provider 回传），驱动压缩判定
 	softCompactNoticed bool    // 软线提醒的一次性开关，回落到软线下时重置
+
+	// Token 用量追踪（TODO #14）：累计所有 LLM 调用的真实用量；pricing 可选，配置后 /usage 展示费用。
+	usage   TokenUsage
+	pricing Pricing
 }
 
 const maxMessages = 100
@@ -106,7 +110,11 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		compactRatio:     a.compactRatio,
 		softCompactRatio: a.softCompactRatio,
 		reasoningEffort:  a.reasoningEffort, // 思考强度随父级（thinking 开关随共享的 client）
+		pricing:          a.pricing,         // 沿用父级单价，便于子任务费用并入后口径一致
 	}
 	sub.summarizer = sub.llmSummarize
-	return sub.Run(ctx, task)
+	result, err := sub.Run(ctx, task)
+	// 子任务用量并入父级会话总量（子 Agent 串行执行，无并发写 a.usage）。
+	a.usage.AddUsage(sub.usage)
+	return result, err
 }

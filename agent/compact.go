@@ -132,6 +132,7 @@ func (a *Agent) llmSummarize(ctx context.Context, msgs []openai.ChatCompletionMe
 	if err != nil {
 		return "", err
 	}
+	a.accountUsage(resp.Usage) // 摘要调用同样计入会话用量（TODO #14）
 	if len(resp.Choices) == 0 {
 		return "", fmt.Errorf("摘要返回空结果")
 	}

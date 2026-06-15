@@ -51,6 +51,16 @@ func getAPIKey(in *bufio.Reader) string {
 	return key
 }
 
+// envFloat 读取一个非负浮点环境变量；缺省 / 非法 / 为负时返回 0（视为未配置）。
+func envFloat(key string) float64 {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil && f >= 0 {
+			return f
+		}
+	}
+	return 0
+}
+
 func loadMCPConfigs() []MCPConfig {
 	home, _ := os.UserHomeDir()
 	configFile := home + "/.qiuqiu/mcp_servers.json"
@@ -94,6 +104,13 @@ func main() {
 			a.SetContextWindow(n)
 		}
 	}
+	// Token 单价（每 1M token，货币单位自定）。配置任一项后 /usage 才展示估算费用，
+	// 默认不配置——价格随模型与时间变动，编造金额不如不显（参见 DeepSeek 官方定价页校准）。
+	a.SetPricing(agent.Pricing{
+		InputMiss: envFloat("DEEPSEEK_PRICE_INPUT"),
+		InputHit:  envFloat("DEEPSEEK_PRICE_CACHE_HIT"),
+		Output:    envFloat("DEEPSEEK_PRICE_OUTPUT"),
+	})
 	ctx := context.Background()
 
 	// ========== 加载 MCP 插件 ==========
@@ -313,6 +330,15 @@ func main() {
 		Name: "compact", Description: "手动压缩上下文：把较早的对话折叠成摘要、保留近消息，主动重置前缀缓存。用法：/compact",
 		Handler: func(args string) bool {
 			a.Compact(ctx)
+			return true
+		},
+	})
+
+	// /usage — 查看本次会话累计 token 用量（及估算费用，若已配置单价）
+	registry.Register(command.Command{
+		Name: "usage", Description: "显示本次会话的 token 用量（输入 / 缓存命中 / 输出 / 思考 / 合计）与估算费用。用法：/usage",
+		Handler: func(args string) bool {
+			a.ReportUsage()
 			return true
 		},
 	})

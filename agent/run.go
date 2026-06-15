@@ -22,6 +22,10 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	// 用户消息进入唯一的消息日志。
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: userInput})
 
+	// 本轮用量 = 结束时的会话累计 − 进入时的基线（无需单独的轮次字段，且不被规划等轮外调用污染）。
+	usageBefore := a.usage
+	defer func() { a.reportTurnUsage(a.usage.Sub(usageBefore)) }()
+
 	maxLoops := 15
 	for i := 0; i < maxLoops; i++ {
 		// 历史超限时先压缩（LLM 摘要旧消息），避免请求超出上下文窗口。
@@ -183,7 +187,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	defer stream.Close()
 
 	var content, reasoning string
-	var promptTokens int
+	var usage openai.Usage
 	toolCallAcc := make(map[int]openai.ToolCall)
 
 	for {
@@ -197,7 +201,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 		// 用量统计单独走一个 choices 为空的尾包，必须在 continue 之前捕获。
 		if resp.Usage != nil && resp.Usage.PromptTokens > 0 {
-			promptTokens = resp.Usage.PromptTokens
+			usage = *resp.Usage
 		}
 
 		if len(resp.Choices) == 0 {
@@ -249,9 +253,11 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		a.emitToken("\n")
 	}
 
-	// 记录这次请求的真实 prompt token 数，供下一轮 maybeCompact 按窗口比例判定。
-	if promptTokens > 0 {
-		a.lastPromptTokens = promptTokens
+	// 记录这次请求的真实用量：prompt_tokens 供 maybeCompact 按窗口比例判定，
+	// 完整 usage（含缓存命中 / 思考 token）计入会话累计供 /usage 展示（TODO #14）。
+	if usage.PromptTokens > 0 {
+		a.lastPromptTokens = usage.PromptTokens
+		a.accountUsage(usage)
 	}
 
 	msg := openai.ChatCompletionMessage{

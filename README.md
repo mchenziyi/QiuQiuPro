@@ -48,8 +48,13 @@ go run main.go
 | `DEEPSEEK_REASONING_EFFORT` | `max` | 思考强度：`max` / `high` |
 | `DEEPSEEK_THINKING` | `enabled` | 设 `disabled` 关闭思考模式（更省 token、更快）|
 | `DEEPSEEK_CONTEXT_WINDOW` | `1000000` | 上下文窗口（token），用于自动压缩的触发判定；切到更小窗口的模型时务必调小 |
+| `DEEPSEEK_PRICE_INPUT` | — | 输入（未命中缓存）单价，每 1M token；配置后 `/usage` 展示估算费用 |
+| `DEEPSEEK_PRICE_CACHE_HIT` | — | 输入（命中缓存）单价，每 1M token |
+| `DEEPSEEK_PRICE_OUTPUT` | — | 输出单价，每 1M token |
 
 > 注：默认开启 V4 的 thinking（思考模式）+ max 强度，推理最强但更费 token、更慢；思考链会实时灰显、与最终答案区分。想省钱/提速可设 `DEEPSEEK_REASONING_EFFORT=high` 或 `DEEPSEEK_THINKING=disabled`。
+>
+> 价格三项默认不配置（不显示费用）——单价随模型与时间变动，请按 [DeepSeek 官方定价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing) 自行填入校准；`/usage` 的 token 数始终展示。
 
 ### 配置 MCP 工具
 
@@ -88,6 +93,8 @@ go run main.go
 | `/explain <文件>` | 让 LLM 解释指定文件的内容和作用 |
 | `/test` | 运行当前项目的测试 |
 | `/use <skill>` | 切换 Skill（如 `/use architect`） |
+| `/compact` | 手动压缩上下文（折叠旧对话为摘要，主动重置前缀缓存）|
+| `/usage` | 查看本次会话的 token 用量（输入 / 缓存命中 / 输出 / 思考 / 合计）与估算费用 |
 | `exit` / `quit` | 退出 |
 
 所有命令以 `/` 开头。不在列表中的输入会作为正常任务交给 Agent 处理。

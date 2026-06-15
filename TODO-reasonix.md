@@ -161,7 +161,15 @@
 - 文件：`agent/session.go`、`agent/compact.go`、`agent/agent.go`、`agent/run.go`、`main.go`、`agent/compact_test.go`
 - 难度：★★★★☆
 
-### 14. Token 用量追踪
+### ✅ 14. Token 用量追踪 — 已完成
+- 按 provider 回传的真实 `usage` 累计，区分**缓存命中输入**与**思考输出** token（呼应 #13：命中越多越省，命中率一眼可见）
+- 一处记账 `accountUsage`：streamChat 主循环 + plan/reflect/replan 规划 + compact 摘要全覆盖，口径与账单一致
+- 每轮 Run 结束输出「本轮 token」摘要（细节日志，安静模式隐藏）；`/usage` 命令看会话累计
+- 可选费用估算：`Pricing` 按缓存命中/未命中/输出三档单价，经环境变量配置；默认不显示（不编造价格）
+- 子 Agent 用量在任务结束后并入父级会话总量
+- 纯函数（累加/子集/命中率/费用/文案）+ httptest 流式集成测试，全程无网络
+- 详见 `docs/23-token-usage.md`
+- 文件：`agent/usage.go`、`agent/run.go`、`agent/plan.go`、`agent/compact.go`、`agent/agent.go`、`main.go`、`agent/usage_test.go`
 - 难度：★★★☆☆
 
 ### 15. 可配 maxSteps + 暂停恢复

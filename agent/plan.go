@@ -68,6 +68,7 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("规划失败：%w", err)
 	}
+	a.accountUsage(resp.Usage) // 规划也耗 token，计入会话累计（TODO #14）
 
 	content := stripCodeFence(resp.Choices[0].Message.Content)
 
@@ -128,6 +129,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	if err != nil {
 		return plan, nil
 	}
+	a.accountUsage(resp.Usage)
 
 	content := strings.TrimSpace(resp.Choices[0].Message.Content)
 	if content == "OK" {
@@ -230,6 +232,7 @@ func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err er
 	if rerr != nil {
 		return fmt.Sprintf("（反思失败：%v）", rerr)
 	}
+	a.accountUsage(resp.Usage)
 
 	reflection := strings.TrimSpace(resp.Choices[0].Message.Content)
 	a.noticef("  💡 反思：%s\n", truncate(reflection, 120))
@@ -290,6 +293,7 @@ func (a *Agent) RePlan(ctx context.Context, plan *Plan, failedIndex int, reflect
 	if rerr != nil {
 		return nil, fmt.Errorf("重规划失败：%w", rerr)
 	}
+	a.accountUsage(resp.Usage)
 
 	content := stripCodeFence(resp.Choices[0].Message.Content)
 
