@@ -176,6 +176,13 @@ func IsHighRiskTool(name string) bool {
 	return highRiskTools[name]
 }
 
+// isReadOnlyTool 判断工具是否「只读、无副作用、不读 stdin」——即可安全并发执行。
+// 集合与 ReadOnlyGate 放行的一致：非高危（写文件 / 编辑 / 执行命令）且不改动仓库
+// （git_commit）。新增改动类工具时只需更新 highRiskTools，这里与只读门会一并跟上。
+func isReadOnlyTool(name string) bool {
+	return !IsHighRiskTool(name) && name != "git_commit"
+}
+
 func (a *Agent) CommandRegistry() *command.Registry { return a.cmdRegistry }
 func (a *Agent) SessionID() string                  { return a.session.ID }
 func (a *Agent) EventStore() *event.Store           { return a.store }

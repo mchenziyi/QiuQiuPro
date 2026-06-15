@@ -112,8 +112,13 @@
 - 文件：`agent/session.go`、`agent/agent.go`、`agent/run.go`、`agent/helpers.go`、`agent/memory_test.go`
 - 难度：★★★☆☆
 
-### 9. 并行工具执行
-- 只读工具并行跑，写工具保持串行
+### ✅ 9. 并行工具执行 — 已完成
+- 抽出 `dispatchToolCalls`：只读工具并发执行、写/高危工具串行，结果按原始顺序回灌（配对不乱）
+- `canRunParallel` 三重判定：已注册 ∧ 只读 ∧ 权限门 GateAllow 才并发；并发组绝不碰 stdin
+- 新增 `isReadOnlyTool` 谓词并让 `ReadOnlyGate` 复用（「改动类工具」分类单点化，不再漂移）
+- 测试以 `-race` 验证：顺序保持 / 只读真并发（屏障法）/ 写串行（峰值并发=1）/ 判定逻辑
+- 详见 `docs/18-parallel-tools.md`
+- 文件：`agent/run.go`、`agent/agent.go`、`agent/gate.go`、`agent/parallel_test.go`
 - 难度：★★★☆☆
 
 ### 10. 事件驱动输出

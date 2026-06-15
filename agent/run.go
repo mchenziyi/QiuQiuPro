@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -42,31 +43,85 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			return msg.Content, nil
 		}
 
-		// 有 ToolCall → 依次执行。每个 tool_call 都必须回一条 tool 结果，
-		// 否则会留下悬空的 assistant(tool_calls)，破坏「调用/结果」配对、下轮请求即报错。
-		for _, tc := range msg.ToolCalls {
-			a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
-			a.debugf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
-
-			result := a.executeToolCall(tc)
-			a.recordEvent("tool_result", result, tc.Function.Name)
-			a.debugf("  📦 %s\n", truncate(result, 100))
-
-			// tool 结果进入日志（与上面的 assistant.tool_calls 按 ToolCallID 配对）。
-			a.session.Add(openai.ChatCompletionMessage{
-				Role: "tool", Content: result, ToolCallID: tc.ID, Name: tc.Function.Name,
-			})
-
-			// 每 N 次工具调用保存 Checkpoint。
-			a.toolCallCount++
-			if a.toolCallCount%checkpointInterval == 0 {
-				a.SaveCheckpoint()
-			}
-		}
+		// 有 ToolCall → 执行。每个 tool_call 都必须回一条 tool 结果，否则会留下悬空的
+		// assistant(tool_calls)，破坏「调用/结果」配对、下轮请求即报错。
+		// 只读工具并发跑、写/高危工具串行（详见 dispatchToolCalls）。
+		a.dispatchToolCalls(msg.ToolCalls)
 	}
 
 	a.SaveCheckpoint()
 	return "", fmt.Errorf("达到最大循环次数 %d", maxLoops)
+}
+
+// dispatchToolCalls 执行一条 assistant 消息里的全部 tool_call，并把结果按**原始顺序**
+// 回灌进会话历史（保持「调用/结果」配对，乱序会破坏接口要求的配对约束）。
+//
+// 并发策略（TODO #9）：只读工具（read_file / grep / glob / code_search / web_fetch 等）
+// 互不冲突、不读 stdin、也不向终端流式输出，故并发执行，缩短一轮里多次读取的总耗时；
+// 写 / 高危工具（write_file / edit_file_block / run_shell / git_commit）保持串行——
+// 既避免文件写竞争与流式输出错乱，也让需要 stdin 确认的高危操作不互相抢输入。
+// 两组在时间上重叠：并发读在后台跑的同时，主协程串行处理写操作。
+func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
+	results := make([]string, len(toolCalls))
+
+	// 1) 记录调用事件（串行、有序，便于审计）。
+	for _, tc := range toolCalls {
+		a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
+		a.debugf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+	}
+
+	// 2) 并发启动只读工具。每个 goroutine 只写自己那格 results[i]（互不重叠，无共享写）。
+	var wg sync.WaitGroup
+	for i, tc := range toolCalls {
+		if !a.canRunParallel(tc) {
+			continue
+		}
+		wg.Add(1)
+		go func(i int, tc openai.ToolCall) {
+			defer wg.Done()
+			results[i] = a.executeToolCall(tc)
+		}(i, tc)
+	}
+
+	// 3) 串行执行写 / 高危 / 需确认 / 未知工具（与上面的并发读在时间上重叠）。
+	for i, tc := range toolCalls {
+		if a.canRunParallel(tc) {
+			continue
+		}
+		results[i] = a.executeToolCall(tc)
+	}
+
+	wg.Wait()
+
+	// 4) 按原始顺序回灌结果（串行）：记录结果事件、写入历史、按节奏存档。
+	for i, tc := range toolCalls {
+		a.recordEvent("tool_result", results[i], tc.Function.Name)
+		a.debugf("  📦 %s\n", truncate(results[i], 100))
+		a.session.Add(openai.ChatCompletionMessage{
+			Role: "tool", Content: results[i], ToolCallID: tc.ID, Name: tc.Function.Name,
+		})
+		a.toolCallCount++
+		if a.toolCallCount%checkpointInterval == 0 {
+			a.SaveCheckpoint()
+		}
+	}
+}
+
+// canRunParallel 判断一个工具调用能否安全并发执行：必须是已注册的只读工具，
+// 且当前权限门对它直接放行（GateAllow，不需 stdin 确认、也未被拒绝）。其余一律串行。
+func (a *Agent) canRunParallel(tc openai.ToolCall) bool {
+	if _, ok := a.allTools[tc.Function.Name]; !ok {
+		return false // 未知工具：交给串行路径回灌「未知工具」错误
+	}
+	if !isReadOnlyTool(tc.Function.Name) {
+		return false // 写 / 高危：串行，规避竞争与 stdin 抢占
+	}
+	gate := a.gate
+	if gate == nil {
+		gate = ConfirmHighRiskGate{}
+	}
+	d, _ := gate.Check(tc.Function.Name, tc.Function.Arguments)
+	return d == GateAllow
 }
 
 // executeToolCall 执行单个工具调用并返回结果文本。

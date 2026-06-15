@@ -43,8 +43,8 @@ type ReadOnlyGate struct{}
 func (ReadOnlyGate) Name() string { return "read-only" }
 
 func (ReadOnlyGate) Check(toolName, _ string) (Decision, string) {
-	// 高危集合即写文件 / 编辑 / 执行命令；git_commit 改动仓库，也一并拒绝。
-	if IsHighRiskTool(toolName) || toolName == "git_commit" {
+	// 非只读即写文件 / 编辑 / 执行命令 / 改动仓库（git_commit），一律拒绝。
+	if !isReadOnlyTool(toolName) {
 		return GateDeny, "只读模式禁止改动类操作"
 	}
 	return GateAllow, ""
