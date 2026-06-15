@@ -131,7 +131,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 
 	content := strings.TrimSpace(resp.Choices[0].Message.Content)
 	if content == "OK" {
-		fmt.Println("  📋 Plan 审查通过")
+		a.noticef("  📋 Plan 审查通过\n")
 		return plan, nil
 	}
 
@@ -143,7 +143,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	}
 	var steps []stepJSON
 	if err := json.Unmarshal([]byte(content), &steps); err != nil || len(steps) == 0 {
-		fmt.Println("  ⚠️  Plan 审查结果解析失败，使用原始 Plan")
+		a.noticef("  ⚠️  Plan 审查结果解析失败，使用原始 Plan\n")
 		return plan, nil
 	}
 
@@ -151,7 +151,7 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 	for _, s := range steps {
 		newPlan.Steps = append(newPlan.Steps, Step{ID: s.ID, Desc: s.Desc, Status: "pending"})
 	}
-	fmt.Println("  📋 Plan 已根据审查意见优化")
+	a.noticef("  📋 Plan 已根据审查意见优化\n")
 	return newPlan, nil
 }
 
@@ -164,7 +164,7 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 		_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", step.Desc))
 		if err != nil {
 			step.Status = "failed"
-			fmt.Printf("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
+			a.noticef("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
 
 			reflection := a.Reflect(ctx, plan, i, err)
 			newPlan, replanErr := a.RePlan(ctx, plan, i, reflection)
@@ -232,7 +232,7 @@ func (a *Agent) Reflect(ctx context.Context, plan *Plan, failedIndex int, err er
 	}
 
 	reflection := strings.TrimSpace(resp.Choices[0].Message.Content)
-	fmt.Printf("  💡 反思：%s\n", truncate(reflection, 120))
+	a.noticef("  💡 反思：%s\n", truncate(reflection, 120))
 	return reflection
 }
 

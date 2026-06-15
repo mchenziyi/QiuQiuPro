@@ -67,7 +67,7 @@ func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
 	// 1) 记录调用事件（串行、有序，便于审计）。
 	for _, tc := range toolCalls {
 		a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
-		a.debugf("  🔧 %s(%s)\n", tc.Function.Name, tc.Function.Arguments)
+		a.emitToolCall(tc.Function.Name, tc.Function.Arguments)
 	}
 
 	// 2) 并发启动只读工具。每个 goroutine 只写自己那格 results[i]（互不重叠，无共享写）。
@@ -96,7 +96,7 @@ func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
 	// 4) 按原始顺序回灌结果（串行）：记录结果事件、写入历史、按节奏存档。
 	for i, tc := range toolCalls {
 		a.recordEvent("tool_result", results[i], tc.Function.Name)
-		a.debugf("  📦 %s\n", truncate(results[i], 100))
+		a.emitToolResult(tc.Function.Name, truncate(results[i], 100))
 		a.session.Add(openai.ChatCompletionMessage{
 			Role: "tool", Content: results[i], ToolCallID: tc.ID, Name: tc.Function.Name,
 		})
@@ -146,15 +146,15 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 	case GateDeny:
 		// 拒绝也要回灌一条结果，让模型据此改用只读方式，而非中断整轮。
 		result := fmt.Sprintf("已拒绝执行 %s：%s。请改用只读手段（如 read_file / grep / code_search）", tc.Function.Name, reason)
-		fmt.Printf("  🚫 %s\n", result)
+		a.noticef("  🚫 %s\n", result)
 		return result
 	case GateConfirm:
 		// 确认走统一输入读取器，避免与主循环混用 stdin。
 		a.debugf("  🔐 %s：%s(%s)\n", reason, tc.Function.Name, tc.Function.Arguments)
-		fmt.Print("  确认执行？[Y/n] ")
+		a.emitPrompt("  确认执行？[Y/n] ")
 		if !a.confirm() {
 			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
-			fmt.Printf("  🚫 %s\n", result)
+			a.noticef("  🚫 %s\n", result)
 			return result
 		}
 	}
@@ -195,7 +195,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 		if delta.Content != "" {
 			content += delta.Content
-			fmt.Print(delta.Content)
+			a.emitToken(delta.Content)
 		}
 
 		for _, tc := range delta.ToolCalls {
@@ -224,7 +224,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	}
 
 	if content != "" {
-		fmt.Println()
+		a.emitToken("\n")
 	}
 
 	msg := openai.ChatCompletionMessage{

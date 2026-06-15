@@ -121,8 +121,14 @@
 - 文件：`agent/run.go`、`agent/agent.go`、`agent/gate.go`、`agent/parallel_test.go`
 - 难度：★★★☆☆
 
-### 10. 事件驱动输出
-- 用 Event/Sink 模式替代 debugf() 打印
+### ✅ 10. 事件驱动输出 — 已完成
+- 新增 `Event`/`Sink`（`agent/sink.go`）：把「发生了什么」与「怎么渲染」解耦，`ConsoleSink` 为默认实现
+- Agent 新增 `sink` 字段 + `SetSink` + 语义化发射器（emitToken/emitToolCall/emitToolResult/emitPrompt/noticef/debugf）
+- `run.go`/`agent.go`/`plan.go` 全部打印点改走 Sink；包内唯一的 `fmt.Print*` 只剩 ConsoleSink（渲染单点化）
+- `Quiet` 过滤统一到 `emit()`，由每条事件的 `Verbose` 显式决定；行为零变化
+- 测试：事件流 / 安静过滤 / token 转交 / 控制台渲染（截 os.Stdout）
+- 详见 `docs/19-event-sink.md`
+- 文件：`agent/sink.go`、`agent/agent.go`、`agent/run.go`、`agent/plan.go`、`agent/sink_test.go`
 - 难度：★★★☆☆
 
 ## 🥉 第三梯队
