@@ -28,11 +28,12 @@
 - 详见 `docs/07-full-tool-history.md`
 - 文件：`agent/run.go`、`agent/helpers.go`、`agent/memory_test.go`
 
-### P1. stdin 读取方式脆弱（健壮性）
-- 主循环用 `bufio.Scanner`，高危确认处用 `fmt.Scanln`，两者混用同一 stdin
-- 后果：粘贴多行 / 管道输入时缓冲错位，确认可能读错或吞掉后续输入
-- 关联：#5 Gate 接口（输入收口到统一抽象后即可顺带解决）
-- 文件：`main.go`、`agent/run.go`
+### ✅ P1. stdin 读取方式脆弱（健壮性）— 已修复
+- 方案：Agent 持唯一 `bufio.Reader`，主循环 / 确认 / 读 API Key 全部收口到它
+- 去掉 `fmt.Scanln` 与 `bufio.Scanner` 混用；新增 `ReadLine()` / `confirm()` 并加单测
+- 顺带兑现 #5 Gate 的一半（输入已抽象，便于将来加权限 Gate）
+- 详见 `docs/08-stdin-unify.md`
+- 文件：`agent/agent.go`、`agent/input.go`、`agent/run.go`、`main.go`、`agent/input_test.go`
 
 ### P2. go.mod 与文档不一致（工程卫生）
 - README 写 Go 1.22+，`go.mod` 实为 `go 1.25.5`，对不上

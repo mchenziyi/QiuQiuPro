@@ -84,13 +84,11 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		return result
 	}
 
-	// 高危工具：执行前让用户确认。
+	// 高危工具：执行前让用户确认（走统一输入读取器，避免与主循环混用 stdin）。
 	if IsHighRiskTool(tc.Function.Name) {
 		a.debugf("  🔐 高危操作：%s(%s)\n", tc.Function.Name, tc.Function.Arguments)
 		fmt.Print("  确认执行？[Y/n] ")
-		var confirm string
-		fmt.Scanln(&confirm)
-		if confirm == "n" || confirm == "N" || confirm == "no" {
+		if !a.confirm() {
 			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
 			fmt.Printf("  🚫 %s\n", result)
 			return result

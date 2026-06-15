@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,9 +28,10 @@ type Agent struct {
 	sysPrompt     string
 	cmdRegistry   *command.Registry
 	lastEventID   string
-	Quiet         bool       // true 时隐藏中间日志
-	Mode          string     // 运行模式："plan"（默认）| "ask"（直接问答）
+	Quiet         bool          // true 时隐藏中间日志
+	Mode          string        // 运行模式："plan"（默认）| "ask"（直接问答）
 	toolCallCount int
+	in            *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
 }
 
 const maxMessages = 100
@@ -188,6 +190,7 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		store:    a.store,
 		session:  fmt.Sprintf("%s_sub_%d", a.session, time.Now().UnixNano()),
 		Quiet:    a.Quiet,
+		in:       a.in, // 子 Agent 共用父级的输入读取器
 	}
 	return sub.Run(ctx, task)
 }

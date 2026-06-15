@@ -24,7 +24,7 @@ type MCPConfig struct {
 	Args    []string `json:"args"`
 }
 
-func getAPIKey() string {
+func getAPIKey(in *bufio.Reader) string {
 	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
 		return key
 	}
@@ -37,12 +37,11 @@ func getAPIKey() string {
 		}
 	}
 	fmt.Print("首次使用，请输入你的 DeepSeek API Key（输入后自动保存，下次不用再输）: ")
-	reader := bufio.NewReader(os.Stdin)
-	key, _ := reader.ReadString('\n')
+	key, _ := in.ReadString('\n')
 	key = strings.TrimSpace(key)
 	if key == "" {
 		fmt.Println("API Key 不能为空")
-		return getAPIKey()
+		return getAPIKey(in)
 	}
 	os.MkdirAll(home+"/.qiuqiu", 0700)
 	os.WriteFile(keyFile, []byte(key), 0600)
@@ -73,8 +72,12 @@ func main() {
 	quiet := flag.Bool("q", false, "安静模式，减少中间日志")
 	flag.Parse()
 
-	apiKey := getAPIKey()
+	// 全程只用这一个 stdin 读取器：读 API Key、主循环、高危确认共用，避免混用导致缓冲错位。
+	stdin := bufio.NewReader(os.Stdin)
+
+	apiKey := getAPIKey(stdin)
 	a := agent.New(apiKey, "deepseek-chat")
+	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.Quiet = *quiet
 	ctx := context.Background()
@@ -239,14 +242,14 @@ func main() {
 	fmt.Println(strings.Repeat("─", 50))
 
 	// ========== 交互式对话循环 ==========
-	scanner := bufio.NewScanner(os.Stdin)
 	for {
 		modeTag := strings.ToUpper(a.CurrentMode())
 		fmt.Printf("\n🧑 [%s] 你: ", modeTag)
-		if !scanner.Scan() {
+		line, ok := a.ReadLine()
+		if !ok {
 			break
 		}
-		input := strings.TrimSpace(scanner.Text())
+		input := strings.TrimSpace(line)
 		if input == "" {
 			continue
 		}
