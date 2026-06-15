@@ -21,9 +21,8 @@ type Agent struct {
 	model         string
 	allTools      map[string]tool.Tool
 	activeTools   []string
-	messages      []openai.ChatCompletionMessage
 	store         *event.Store
-	session       string
+	session       *Session // 会话状态：ID + 对话历史 + 大小管理
 	currentSkill  *skill.Skill
 	sysPrompt     string
 	cmdRegistry   *command.Registry
@@ -45,9 +44,8 @@ func New(apiKey, model string) *Agent {
 		client:      openai.NewClientWithConfig(config),
 		model:       model,
 		allTools:    make(map[string]tool.Tool),
-		messages:    make([]openai.ChatCompletionMessage, 0),
 		store:       event.NewStore(".reasonix/sessions"),
-		session:     fmt.Sprintf("session_%d", time.Now().Unix()),
+		session:     NewSession(fmt.Sprintf("session_%d", time.Now().Unix())),
 		cmdRegistry: command.NewRegistry(),
 		Mode:        "plan",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
@@ -179,9 +177,9 @@ func IsHighRiskTool(name string) bool {
 }
 
 func (a *Agent) CommandRegistry() *command.Registry { return a.cmdRegistry }
-func (a *Agent) SessionID() string                  { return a.session }
+func (a *Agent) SessionID() string                  { return a.session.ID }
 func (a *Agent) EventStore() *event.Store           { return a.store }
-func (a *Agent) TrimMessages()                      { a.trimMessages() }
+func (a *Agent) TrimMessages()                      { a.session.Trim() }
 
 func (a *Agent) debugf(format string, args ...interface{}) {
 	if !a.Quiet {
@@ -190,22 +188,20 @@ func (a *Agent) debugf(format string, args ...interface{}) {
 }
 
 func (a *Agent) SaveCheckpoint() {
-	data, _ := json.Marshal(a.messages)
-	a.store.SaveCheckpoint(a.session, a.lastEventID, string(data))
+	data, _ := a.session.Snapshot()
+	a.store.SaveCheckpoint(a.session.ID, a.lastEventID, data)
 }
 
 func (a *Agent) RestoreFromCheckpoint() bool {
-	cp, err := a.store.LoadCheckpoint(a.session)
+	cp, err := a.store.LoadCheckpoint(a.session.ID)
 	if err != nil || cp == nil {
 		return false
 	}
-	var msgs []openai.ChatCompletionMessage
-	if err := json.Unmarshal([]byte(cp.MessagesJSON), &msgs); err != nil {
+	if err := a.session.Restore(cp.MessagesJSON); err != nil {
 		return false
 	}
-	a.messages = msgs
 	a.lastEventID = cp.LastEventID
-	fmt.Printf("  💾 从快照恢复 %d 条消息\n", len(msgs))
+	fmt.Printf("  💾 从快照恢复 %d 条消息\n", a.session.Len())
 	return true
 }
 
@@ -214,9 +210,8 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		client:   a.client,
 		model:    a.model,
 		allTools: a.allTools,
-		messages: make([]openai.ChatCompletionMessage, 0),
 		store:    a.store,
-		session:  fmt.Sprintf("%s_sub_%d", a.session, time.Now().UnixNano()),
+		session:  NewSession(fmt.Sprintf("%s_sub_%d", a.session.ID, time.Now().UnixNano())),
 		Quiet:    a.Quiet,
 		in:       a.in,   // 子 Agent 共用父级的输入读取器
 		gate:     a.gate, // 子 Agent 继承父级权限门（如只读模式）

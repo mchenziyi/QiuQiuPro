@@ -103,8 +103,13 @@
 - 详见 `docs/16-skill-personas.md`
 - 文件：`prompt/skills/{pm,backend_dev,tester,devops}.json`、`agent/skill_bundle_test.go`
 
-### 8. Session 独立管理
-- messages 从 run.go 中拆出，交给独立 Session 对象
+### ✅ 8. Session 独立管理 — 已完成
+- 新增 `Session` 对象（`agent/session.go`）：会话 ID + 对话历史 + 大小管理，收口 Add / Trim / BuildRequest / Snapshot / Restore
+- Agent 的 `messages` 切片 + `session` 字符串 ID 合并为 `session *Session`；run.go / agent.go / helpers.go 各触点改走 Session
+- `trimMessages` / `buildRequestMessages` 迁入 Session；测试改为直接测 Session，补 Snapshot/Restore 用例
+- 行为零变化（全量保留 + 配对感知裁剪 + checkpoint 一致），为后续多会话打底
+- 详见 `docs/17-session-object.md`
+- 文件：`agent/session.go`、`agent/agent.go`、`agent/run.go`、`agent/helpers.go`、`agent/memory_test.go`
 - 难度：★★★☆☆
 
 ### 9. 并行工具执行
