@@ -15,6 +15,7 @@ const (
 	EventToolResult                  // 工具返回结果
 	EventNotice                      // 流程 / 状态提示（自带 emoji 与换行）
 	EventPrompt                      // 需要用户输入的提示（不换行）
+	EventReasoning                   // 思考模式（thinking）的 reasoning 增量（逐字、不换行、灰显）
 )
 
 // Event 是 Agent 运行过程中产生的一条输出事件。
@@ -45,6 +46,9 @@ func (ConsoleSink) Emit(ev Event) {
 		fmt.Printf("  🔧 %s(%s)\n", ev.Name, ev.Text)
 	case EventToolResult:
 		fmt.Printf("  📦 %s\n", ev.Text)
+	case EventReasoning:
+		// 思考链灰显，与最终答案在视觉上区分（ANSI dim/gray，逐片包裹）。
+		fmt.Print("\033[90m" + ev.Text + "\033[0m")
 	default:
 		// EventToken / EventPrompt / EventNotice：原样输出，换行由调用方决定。
 		fmt.Print(ev.Text)
@@ -81,6 +85,12 @@ func (a *Agent) noticef(format string, args ...interface{}) {
 
 // emitToken 输出 assistant 流式增量（逐字、不换行）。
 func (a *Agent) emitToken(text string) { a.emit(Event{Kind: EventToken, Text: text}) }
+
+// emitReasoning 输出思考模式的 reasoning 增量（逐字、不换行）。标记为 Verbose：安静模式下
+// 隐藏思考链（仍照常产出，只是不显示），非安静模式下灰显。
+func (a *Agent) emitReasoning(text string) {
+	a.emit(Event{Kind: EventReasoning, Text: text, Verbose: true})
+}
 
 // emitToolCall / emitToolResult 输出工具调用与结果（细节日志，由 Sink 统一加 emoji）。
 func (a *Agent) emitToolCall(name, args string) {

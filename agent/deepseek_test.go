@@ -77,15 +77,35 @@ func TestBodyFieldInjector_DoesNotOverride(t *testing.T) {
 	}
 }
 
-// 默认 DeepSeek 客户端应装配了关闭 thinking 的注入传输。
-func TestNewDeepSeekHTTPClient_DisablesThinking(t *testing.T) {
-	c := newDeepSeekHTTPClient()
-	inj, ok := c.Transport.(bodyFieldInjector)
-	if !ok {
-		t.Fatalf("Transport 应为 bodyFieldInjector，实际 %T", c.Transport)
+// newDeepSeekHTTPClient 按入参注入 thinking enabled / disabled。
+func TestNewDeepSeekHTTPClient_ThinkingToggle(t *testing.T) {
+	for _, tc := range []struct {
+		thinking bool
+		want     string
+	}{{true, "enabled"}, {false, "disabled"}} {
+		c := newDeepSeekHTTPClient(tc.thinking)
+		inj, ok := c.Transport.(bodyFieldInjector)
+		if !ok {
+			t.Fatalf("Transport 应为 bodyFieldInjector，实际 %T", c.Transport)
+		}
+		th, ok := inj.fields["thinking"].(map[string]any)
+		if !ok || th["type"] != tc.want {
+			t.Fatalf("thinking=%v 应注入 %q，实际 %+v", tc.thinking, tc.want, inj.fields["thinking"])
+		}
 	}
-	th, ok := inj.fields["thinking"].(map[string]any)
-	if !ok || th["type"] != "disabled" {
-		t.Fatalf("默认应关闭 thinking，实际 %+v", inj.fields["thinking"])
+}
+
+// 思考配置默认开启 + max，并能被环境变量覆盖。
+func TestDeepSeekThinkingConfig(t *testing.T) {
+	t.Setenv("DEEPSEEK_THINKING", "")
+	t.Setenv("DEEPSEEK_REASONING_EFFORT", "")
+	if thinking, effort := deepSeekThinkingConfig(); !thinking || effort != "max" {
+		t.Fatalf("默认应 thinking=true effort=max，实际 %v / %q", thinking, effort)
+	}
+
+	t.Setenv("DEEPSEEK_THINKING", "disabled")
+	t.Setenv("DEEPSEEK_REASONING_EFFORT", "high")
+	if thinking, effort := deepSeekThinkingConfig(); thinking || effort != "high" {
+		t.Fatalf("环境变量应覆盖为 thinking=false effort=high，实际 %v / %q", thinking, effort)
 	}
 }

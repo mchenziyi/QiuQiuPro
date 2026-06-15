@@ -171,6 +171,8 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 			Model:    a.model,
 			Messages: messages,
 			Tools:    a.toolDefinitions(),
+			// 思考模式强度（DeepSeek V4：high / max）；thinking 关闭时被忽略。空串走服务端默认。
+			ReasoningEffort: a.reasoningEffort,
 			// 让流式响应在末尾带上用量统计（prompt_tokens 等），用于按窗口比例触发压缩。
 			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 		},
@@ -180,7 +182,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	}
 	defer stream.Close()
 
-	var content string
+	var content, reasoning string
 	var promptTokens int
 	toolCallAcc := make(map[int]openai.ToolCall)
 
@@ -203,7 +205,17 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		}
 		delta := resp.Choices[0].Delta
 
+		// 思考模式：reasoning 先于答案流出，灰显展示但**不入历史**（DeepSeek 下一轮会忽略它，
+		// 留着只会白占上下文）。
+		if delta.ReasoningContent != "" {
+			reasoning += delta.ReasoningContent
+			a.emitReasoning(delta.ReasoningContent)
+		}
+
 		if delta.Content != "" {
+			if reasoning != "" && content == "" {
+				a.emitToken("\n") // 思考链与最终答案之间空一行
+			}
 			content += delta.Content
 			a.emitToken(delta.Content)
 		}

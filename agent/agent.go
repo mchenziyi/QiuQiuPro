@@ -24,23 +24,24 @@ import (
 //   - run.go        核心循环 / 工具分发 / 流式
 //   - plan.go       规划 / 反思 / 重规划
 type Agent struct {
-	client        *openai.Client
-	model         string
-	allTools      map[string]tool.Tool
-	activeTools   []string
-	store         *event.Store
-	session       *Session // 会话状态：ID + 对话历史 + 大小管理
-	currentSkill  *skill.Skill
-	sysPrompt     string
-	cmdRegistry   *command.Registry
-	lastEventID   string
-	Quiet         bool   // true 时隐藏中间日志
-	Mode          string // 运行模式："plan"（默认）| "ask"（直接问答）
-	toolCallCount int
-	in            *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
-	gate          Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
-	sink          Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
-	summarizer    summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
+	client          *openai.Client
+	model           string
+	allTools        map[string]tool.Tool
+	activeTools     []string
+	store           *event.Store
+	session         *Session // 会话状态：ID + 对话历史 + 大小管理
+	currentSkill    *skill.Skill
+	sysPrompt       string
+	cmdRegistry     *command.Registry
+	lastEventID     string
+	Quiet           bool   // true 时隐藏中间日志
+	Mode            string // 运行模式："plan"（默认）| "ask"（直接问答）
+	toolCallCount   int
+	in              *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
+	gate            Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
+	sink            Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
+	summarizer      summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
+	reasoningEffort string        // DeepSeek V4 思考强度："max"（默认）/ "high"；thinking 关闭时被忽略
 
 	// 上下文压缩（TODO #13）：按「占模型窗口的比例」触发，靠真实用量驱动，对前缀缓存友好。
 	contextWindow      int     // 模型上下文窗口（token）；<=0 关闭自动压缩
@@ -56,7 +57,8 @@ const checkpointInterval = 5
 func New(apiKey, model string) *Agent {
 	config := openai.DefaultConfig(apiKey)
 	config.BaseURL = "https://api.deepseek.com"
-	config.HTTPClient = newDeepSeekHTTPClient() // 关闭 V4 默认 thinking 模式，沿用非思考行为与成本
+	thinking, effort := deepSeekThinkingConfig() // 默认开启 thinking + max，可经环境变量调整
+	config.HTTPClient = newDeepSeekHTTPClient(thinking)
 	a := &Agent{
 		client:      openai.NewClientWithConfig(config),
 		model:       model,
@@ -72,6 +74,7 @@ func New(apiKey, model string) *Agent {
 		contextWindow:    defaultContextWindow,
 		compactRatio:     defaultCompactRatio,
 		softCompactRatio: defaultSoftRatio,
+		reasoningEffort:  effort,
 	}
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
@@ -102,6 +105,7 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		contextWindow:    a.contextWindow, // 继承上下文压缩配置，子任务过长时同样兜底
 		compactRatio:     a.compactRatio,
 		softCompactRatio: a.softCompactRatio,
+		reasoningEffort:  a.reasoningEffort, // 思考强度随父级（thinking 开关随共享的 client）
 	}
 	sub.summarizer = sub.llmSummarize
 	return sub.Run(ctx, task)

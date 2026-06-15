@@ -45,9 +45,11 @@ go run main.go
 |------|------|------|
 | `DEEPSEEK_API_KEY` | — | API Key（也可首次启动时手动输入）|
 | `DEEPSEEK_MODEL` | `deepseek-v4-flash` | 模型名；可设为 `deepseek-v4-pro` 等。旧 `deepseek-chat` 将于 2026-07-24 下线 |
+| `DEEPSEEK_REASONING_EFFORT` | `max` | 思考强度：`max` / `high` |
+| `DEEPSEEK_THINKING` | `enabled` | 设 `disabled` 关闭思考模式（更省 token、更快）|
 | `DEEPSEEK_CONTEXT_WINDOW` | `1000000` | 上下文窗口（token），用于自动压缩的触发判定；切到更小窗口的模型时务必调小 |
 
-> 注：V4 默认开启 thinking（思考模式，多花 token、更慢），本项目已统一关闭以沿用非思考行为与成本，并通过自带的 CoT 提示词展示推理。
+> 注：默认开启 V4 的 thinking（思考模式）+ max 强度，推理最强但更费 token、更慢；思考链会实时灰显、与最终答案区分。想省钱/提速可设 `DEEPSEEK_REASONING_EFFORT=high` 或 `DEEPSEEK_THINKING=disabled`。
 
 ### 配置 MCP 工具
 
