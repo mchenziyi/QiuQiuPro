@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -142,6 +142,12 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		a.debugf("  ⚠️  %s\n", result)
 		return result
 	}
+	hookCtx := a.toolHookContext(tc.Function.Name, tc.Function.Arguments)
+	if ok, reason := a.beforeToolHooks(hookCtx); !ok {
+		result := fmt.Sprintf("已拒绝执行 %s：%s", tc.Function.Name, reason)
+		a.noticef("  🚫 %s\n", result)
+		return result
+	}
 
 	// 经由权限门裁决：放行 / 确认 / 拒绝。Gate 可插拔（默认高危确认，可切换只读等）。
 	gate := a.gate
@@ -165,7 +171,8 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		}
 	}
 
-	return t.Execute(tc.Function.Arguments)
+	result := t.Execute(tc.Function.Arguments)
+	return a.afterToolHooks(hookCtx, result)
 }
 
 // streamChat 流式调用 LLM，实时输出文本，同时积累 tool call

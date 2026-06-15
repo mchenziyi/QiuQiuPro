@@ -14,19 +14,19 @@ import (
 // 一旦写入就不可修改（追加写入，不改已有行）
 type Event struct {
 	ID        string    `json:"id"`
-	Type      string    `json:"type"`       // 事件类型：user / assistant / tool_call / tool_result / error
-	Content   string    `json:"content"`    // 事件内容
+	Type      string    `json:"type"`                // 事件类型：user / assistant / tool_call / tool_result / error
+	Content   string    `json:"content"`             // 事件内容
 	ToolName  string    `json:"tool_name,omitempty"` // 工具名
-	Timestamp time.Time `json:"timestamp"`  // 发生时间
+	Timestamp time.Time `json:"timestamp"`           // 发生时间
 }
 
 // Checkpoint 表示 Agent 的状态快照
 // 定期保存，崩溃后从最近的 Checkpoint 恢复，不用重放全部事件
 type Checkpoint struct {
-	SessionID   string `json:"session_id"`
-	LastEventID string `json:"last_event_id"`   // 快照对应的最后一条 Event ID
-	MessagesJSON string `json:"messages_json"`  // 序列化后的 messages
-	CreatedAt   int64  `json:"created_at"`      // 创建时间戳
+	SessionID    string `json:"session_id"`
+	LastEventID  string `json:"last_event_id"` // 快照对应的最后一条 Event ID
+	MessagesJSON string `json:"messages_json"` // 序列化后的 messages
+	CreatedAt    int64  `json:"created_at"`    // 创建时间戳
 }
 
 // Store 事件存储
@@ -103,10 +103,10 @@ func (s *Store) LoadSince(sessionID, afterEventID string) ([]Event, error) {
 // messagesJSON 是序列化后的对话历史
 func (s *Store) SaveCheckpoint(sessionID, lastEventID, messagesJSON string) error {
 	cp := Checkpoint{
-		SessionID:   sessionID,
-		LastEventID: lastEventID,
+		SessionID:    sessionID,
+		LastEventID:  lastEventID,
 		MessagesJSON: messagesJSON,
-		CreatedAt:   time.Now().Unix(),
+		CreatedAt:    time.Now().Unix(),
 	}
 	path := fmt.Sprintf("%s/%s.ckpt", s.dir, sessionID)
 	data, _ := json.Marshal(cp)
@@ -129,6 +129,35 @@ func (s *Store) LoadCheckpoint(sessionID string) (*Checkpoint, error) {
 		return nil, err
 	}
 	return &cp, nil
+}
+
+// SaveExecutionState 保存当前计划执行状态（Plan、下一步索引、暂停原因等）。
+// 具体 JSON 结构由 agent 包定义，Store 只负责按 session 持久化字节，避免包循环。
+func (s *Store) SaveExecutionState(sessionID string, data []byte) error {
+	path := fmt.Sprintf("%s/%s.exec.json", s.dir, sessionID)
+	return os.WriteFile(path, data, 0644)
+}
+
+// LoadExecutionState 读取当前计划执行状态；不存在时返回 nil。
+func (s *Store) LoadExecutionState(sessionID string) ([]byte, error) {
+	path := fmt.Sprintf("%s/%s.exec.json", s.dir, sessionID)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return data, nil
+}
+
+// ClearExecutionState 清理已完成 / 已废弃的计划执行状态。
+func (s *Store) ClearExecutionState(sessionID string) error {
+	path := fmt.Sprintf("%s/%s.exec.json", s.dir, sessionID)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
 // Replay 把事件列表格式化成可读的对话记录

@@ -53,6 +53,13 @@ type Agent struct {
 	// Token 用量追踪（TODO #14）：累计所有 LLM 调用的真实用量；pricing 可选，配置后 /usage 展示费用。
 	usage   TokenUsage
 	pricing Pricing
+
+	// 可控长任务执行（TODO #15）：maxSteps 限制一次连续执行的 Plan step 数；pauseRequested 协作式暂停。
+	maxSteps       int
+	pauseRequested bool
+
+	// 工具 Hook（TODO #16）：所有工具执行前后统一经过 hook 链。
+	toolHooks []ToolHook
 }
 
 const maxMessages = 100
@@ -111,6 +118,8 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		softCompactRatio: a.softCompactRatio,
 		reasoningEffort:  a.reasoningEffort, // 思考强度随父级（thinking 开关随共享的 client）
 		pricing:          a.pricing,         // 沿用父级单价，便于子任务费用并入后口径一致
+		maxSteps:         a.maxSteps,        // 子任务同样受步数上限保护，但不继承暂停请求
+		toolHooks:        a.toolHooks,
 	}
 	sub.summarizer = sub.llmSummarize
 	result, err := sub.Run(ctx, task)

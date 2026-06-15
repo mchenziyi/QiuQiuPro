@@ -172,11 +172,23 @@
 - 文件：`agent/usage.go`、`agent/run.go`、`agent/plan.go`、`agent/compact.go`、`agent/agent.go`、`main.go`、`agent/usage_test.go`
 - 难度：★★★☆☆
 
-### 15. 可配 maxSteps + 暂停恢复
+### ✅ 15. 可配 maxSteps + 暂停恢复 — 已完成
+- `DEEPSEEK_MAX_STEPS` / `/maxsteps [n]` 控制一次连续计划执行最多完成多少个 step；`0` 表示不限制
+- 达到 maxSteps 后协作式暂停：当前 step 完成后保存执行状态，提示 `/resume` 继续
+- `/pause` 请求协作式暂停；`/resume` 从保存的 `NextStepIndex` 继续，不重新生成 Plan、不从头重跑
+- 新增执行状态 sidecar：保存目标、步骤列表、下一步索引、状态、暂停原因、更新时间；Session checkpoint 仍保存消息历史
+- 计划完成后自动清理执行状态；无可恢复状态时 `/resume` 返回友好错误
+- 详见 `docs/24-maxsteps-hooks.md`
+- 文件：`agent/execution_state.go`、`agent/plan.go`、`agent/agent.go`、`event/store.go`、`main.go`、`agent/execution_state_test.go`
 - 难度：★★★★☆
 
-### 16. Hook 机制
-- 工具执行前后可插拔
+### ✅ 16. Hook 机制 — 已完成（工具前后）
+- 新增 `ToolHook` 接口：`BeforeToolCall` / `AfterToolCall`
+- `BeforeToolCall` 可放行或拒绝工具执行；拒绝仍回灌合法 tool result，保持 tool_call/tool_result 配对
+- `AfterToolCall` 可观察或改写工具结果，后续可接审计、脱敏、指标、策略限制等
+- `executeToolCall` 作为唯一咽喉接入 hook 链，默认无 hook 时行为不变；子 Agent 继承父级 hooks
+- 详见 `docs/24-maxsteps-hooks.md`
+- 文件：`agent/hooks.go`、`agent/run.go`、`agent/agent.go`、`agent/hooks_test.go`
 - 难度：★★★★☆
 
 ## 🎯 长期规划

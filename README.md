@@ -48,6 +48,7 @@ go run main.go
 | `DEEPSEEK_REASONING_EFFORT` | `max` | 思考强度：`max` / `high` |
 | `DEEPSEEK_THINKING` | `enabled` | 设 `disabled` 关闭思考模式（更省 token、更快）|
 | `DEEPSEEK_CONTEXT_WINDOW` | `1000000` | 上下文窗口（token），用于自动压缩的触发判定；切到更小窗口的模型时务必调小 |
+| `DEEPSEEK_MAX_STEPS` | `0` | 单次连续计划执行的 step 上限；`0` 表示不限制，达到上限会暂停，可 `/resume` 继续 |
 | `DEEPSEEK_PRICE_INPUT` | — | 输入（未命中缓存）单价，每 1M token；配置后 `/usage` 展示估算费用 |
 | `DEEPSEEK_PRICE_CACHE_HIT` | — | 输入（命中缓存）单价，每 1M token |
 | `DEEPSEEK_PRICE_OUTPUT` | — | 输出单价，每 1M token |
@@ -95,6 +96,9 @@ go run main.go
 | `/use <skill>` | 切换 Skill（如 `/use architect`） |
 | `/compact` | 手动压缩上下文（折叠旧对话为摘要，主动重置前缀缓存）|
 | `/usage` | 查看本次会话的 token 用量（输入 / 缓存命中 / 输出 / 思考 / 合计）与估算费用 |
+| `/maxsteps [n]` | 设置单次连续计划执行的 step 上限；`0` 表示不限制 |
+| `/pause` | 请求协作式暂停：当前 step 完成后暂停 |
+| `/resume` | 从上次暂停的 Plan step 继续执行 |
 | `exit` / `quit` | 退出 |
 
 所有命令以 `/` 开头。不在列表中的输入会作为正常任务交给 Agent 处理。

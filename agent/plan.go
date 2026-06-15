@@ -159,9 +159,27 @@ func (a *Agent) ReviewPlan(ctx context.Context, plan *Plan) (*Plan, error) {
 
 // ExecutePlan 按顺序执行 Plan 中的每一步
 func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
-	for i := 0; i < len(plan.Steps); i++ {
+	return a.executePlanFrom(ctx, plan, 0)
+}
+
+func (a *Agent) executePlanFrom(ctx context.Context, plan *Plan, start int) error {
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(plan.Steps) {
+		_ = a.ClearExecutionState()
+		return nil
+	}
+	stepsRun := 0
+	for i := start; i < len(plan.Steps); i++ {
 		step := &plan.Steps[i]
 		step.Status = "running"
+		_ = a.SaveExecutionState(ExecutionState{
+			Goal:          plan.Goal,
+			Steps:         append([]Step(nil), plan.Steps...),
+			NextStepIndex: i,
+			Status:        ExecutionRunning,
+		})
 		a.debugf("\n  📋 [%d/%d] %s\n", i+1, len(plan.Steps), step.Desc)
 		_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", step.Desc))
 		if err != nil {
@@ -180,7 +198,26 @@ func (a *Agent) ExecutePlan(ctx context.Context, plan *Plan) error {
 		}
 		step.Status = "done"
 		a.debugf("  ✅ [%d/%d] 完成\n", i+1, len(plan.Steps))
+		stepsRun++
+
+		next := i + 1
+		if next < len(plan.Steps) && a.pauseRequested {
+			a.pauseRequested = false
+			if err := a.savePausedPlan(plan, next, PauseReasonUser); err != nil {
+				return err
+			}
+			a.noticef("  ⏸️  已暂停：当前步骤完成，输入 /resume 继续\n")
+			return ErrPlanPaused
+		}
+		if next < len(plan.Steps) && a.maxSteps > 0 && stepsRun >= a.maxSteps {
+			if err := a.savePausedPlan(plan, next, PauseReasonMaxSteps); err != nil {
+				return err
+			}
+			a.noticef("  ⏸️  已达到 maxSteps=%d，输入 /resume 继续\n", a.maxSteps)
+			return ErrPlanPaused
+		}
 	}
+	_ = a.ClearExecutionState()
 	return nil
 }
 

@@ -5,6 +5,7 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -102,6 +103,12 @@ func main() {
 	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_CONTEXT_WINDOW")); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			a.SetContextWindow(n)
+		}
+	}
+	// 单次连续计划执行的 step 上限。0 表示不限制；达到上限会协作式暂停，输入 /resume 继续。
+	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_MAX_STEPS")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
+			a.SetMaxSteps(n)
 		}
 	}
 	// Token 单价（每 1M token，货币单位自定）。配置任一项后 /usage 才展示估算费用，
@@ -343,6 +350,53 @@ func main() {
 		},
 	})
 
+	// /maxsteps [n] — 配置一次连续执行最多跑多少个 Plan step；0 表示不限制。
+	registry.Register(command.Command{
+		Name: "maxsteps", Description: "设置单次连续计划执行的 step 上限；0 表示不限制。用法：/maxsteps [n]",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Printf("  当前 maxSteps：%d（0 表示不限制）\n", a.MaxSteps())
+				return true
+			}
+			n, err := strconv.Atoi(strings.TrimSpace(args))
+			if err != nil || n < 0 {
+				fmt.Println("  ⚠️  用法：/maxsteps <非负整数>，0 表示不限制")
+				return true
+			}
+			a.SetMaxSteps(n)
+			if n == 0 {
+				fmt.Println("  已关闭 maxSteps 限制")
+			} else {
+				fmt.Printf("  已设置 maxSteps=%d；达到上限会暂停，可输入 /resume 继续\n", n)
+			}
+			return true
+		},
+	})
+
+	// /pause — 协作式暂停：当前 step 完成后停下并保存执行状态。
+	registry.Register(command.Command{
+		Name: "pause", Description: "请求协作式暂停：当前 step 完成后暂停，之后可 /resume 继续。用法：/pause",
+		Handler: func(args string) bool {
+			a.RequestPause()
+			fmt.Println("  已请求暂停：当前 step 完成后会停下（若当前没有执行中的计划，则下次计划执行时生效）")
+			return true
+		},
+	})
+
+	// /resume — 从暂停状态继续执行 Plan。
+	registry.Register(command.Command{
+		Name: "resume", Description: "从上次暂停的 Plan step 继续执行。用法：/resume",
+		Handler: func(args string) bool {
+			if err := a.ResumePlan(ctx); err != nil {
+				if errors.Is(err, agent.ErrPlanPaused) {
+					return true
+				}
+				fmt.Printf("  ❌ 恢复失败：%v\n", err)
+			}
+			return true
+		},
+	})
+
 	fmt.Printf("\n🤖 球球 Agent 已启动 | Skill：[%s] 模式：[%s]（输入 /help 查看所有命令）\n",
 		a.CurrentSkillName(), a.CurrentMode())
 	fmt.Println(strings.Repeat("─", 50))
@@ -404,6 +458,9 @@ func main() {
 			fmt.Println("\n🚀 开始执行...")
 			err = a.ExecutePlan(ctx, plan)
 			if err != nil {
+				if errors.Is(err, agent.ErrPlanPaused) {
+					continue
+				}
 				fmt.Printf("❌ 执行失败：%v\n", err)
 				continue
 			}
