@@ -133,8 +133,13 @@
 
 ## 🥉 第三梯队
 
-### 11. 拆分 agent.go
-- 按职责分文件
+### ✅ 11. 拆分 agent.go — 已完成
+- 265 行「杂物间」按职责拆分：`tools.go`（工具+风险分类）/ `skill.go`（人格+模式）/ `checkpoint.go`（存档恢复）
+- Agent 侧的门控制方法并入 `gate.go`、事件发射方法并入 `sink.go`（领域类型与操作就近聚合）
+- `agent.go` 瘦到 ~90 行（结构体 + New + accessor + SpawnSubAgent），去掉多余 json 导入
+- 纯代码搬家、零行为改变；既有测试 + `-race` + `gofmt` 全绿
+- 详见 `docs/20-split-agent.md`
+- 文件：`agent/agent.go`、`agent/tools.go`、`agent/skill.go`、`agent/checkpoint.go`、`agent/gate.go`、`agent/sink.go`
 - 难度：★★☆☆☆
 
 ### 12. LLM Provider 抽象

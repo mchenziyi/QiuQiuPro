@@ -56,3 +56,31 @@ type AllowAllGate struct{}
 func (AllowAllGate) Name() string { return "allow-all" }
 
 func (AllowAllGate) Check(string, string) (Decision, string) { return GateAllow, "" }
+
+// ----- Agent 侧的权限门控制 -----
+
+// SetGate 替换权限门。
+func (a *Agent) SetGate(g Gate) { a.gate = g }
+
+// GateName 返回当前权限门名字（confirm / read-only / allow-all）。
+func (a *Agent) GateName() string {
+	if a.gate == nil {
+		return "confirm"
+	}
+	return a.gate.Name()
+}
+
+// SetReadOnly 开关只读模式：开启用 ReadOnlyGate，关闭恢复默认的 ConfirmHighRiskGate。
+func (a *Agent) SetReadOnly(on bool) {
+	if on {
+		a.gate = ReadOnlyGate{}
+	} else {
+		a.gate = ConfirmHighRiskGate{}
+	}
+}
+
+// IsReadOnly 当前是否处于只读模式。
+func (a *Agent) IsReadOnly() bool {
+	_, ok := a.gate.(ReadOnlyGate)
+	return ok
+}

@@ -50,3 +50,45 @@ func (ConsoleSink) Emit(ev Event) {
 		fmt.Print(ev.Text)
 	}
 }
+
+// ----- Agent 侧的事件发射 -----
+
+// SetSink 替换输出去向（默认 ConsoleSink）。供上层 UI 或测试注入自定义渲染。
+func (a *Agent) SetSink(s Sink) { a.sink = s }
+
+// emit 把一条事件送往 Sink；细节日志（Verbose）在安静模式下丢弃。
+// 不修改 a（无锁），故并发只读阶段调用也安全；Agent 实际仅在串行阶段 Emit。
+func (a *Agent) emit(ev Event) {
+	if ev.Verbose && a.Quiet {
+		return
+	}
+	s := a.sink
+	if s == nil {
+		s = ConsoleSink{}
+	}
+	s.Emit(ev)
+}
+
+// debugf 细节日志：等价于原 debugf（安静模式隐藏），现统一走 Sink。
+func (a *Agent) debugf(format string, args ...interface{}) {
+	a.emit(Event{Kind: EventNotice, Text: fmt.Sprintf(format, args...), Verbose: true})
+}
+
+// noticef 常驻提示：始终呈现（不受安静模式影响），等价于原先直接 fmt.Printf 的那些行。
+func (a *Agent) noticef(format string, args ...interface{}) {
+	a.emit(Event{Kind: EventNotice, Text: fmt.Sprintf(format, args...)})
+}
+
+// emitToken 输出 assistant 流式增量（逐字、不换行）。
+func (a *Agent) emitToken(text string) { a.emit(Event{Kind: EventToken, Text: text}) }
+
+// emitToolCall / emitToolResult 输出工具调用与结果（细节日志，由 Sink 统一加 emoji）。
+func (a *Agent) emitToolCall(name, args string) {
+	a.emit(Event{Kind: EventToolCall, Name: name, Text: args, Verbose: true})
+}
+func (a *Agent) emitToolResult(name, result string) {
+	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true})
+}
+
+// emitPrompt 输出需要用户输入的提示（不换行）。
+func (a *Agent) emitPrompt(text string) { a.emit(Event{Kind: EventPrompt, Text: text}) }
