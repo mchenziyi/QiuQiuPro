@@ -1,36 +1,31 @@
-﻿package agent
+package agent
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
-// Run 处理一轮用户输入——Agent 核心循环
-//
-// 全量保留：a.session 是唯一的事实源。一轮对话里的所有往返——用户输入、
-// 带 tool_calls 的 assistant 消息、以及每条 tool 结果——都按顺序写进会话历史，
-// 不再像过去那样只在结束时存「用户问题 + 最终回答」而丢掉中间的工具上下文。
-// 这样下一轮 LLM 能看到上一轮读过哪些文件、工具返回了什么，避免重复读取与「失忆」。
+// Run 处理一轮用户输入——Agent 核心循环（无硬上限，由风暴检测兜底）
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.recordEvent("user", userInput, "")
 
-	// 用户消息进入唯一的消息日志。
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: userInput})
 
-	// 本轮用量 = 结束时的会话累计 − 进入时的基线（无需单独的轮次字段，且不被规划等轮外调用污染）。
 	usageBefore := a.usage
 	defer func() { a.reportTurnUsage(a.usage.Sub(usageBefore)) }()
 
-	maxLoops := 8
-	for i := 0; i < maxLoops; i++ {
-		// 历史超限时先压缩（LLM 摘要旧消息），避免请求超出上下文窗口。
+	// 重置风暴状态（每轮用户输入是独立的任务）
+	a.stormSig = ""
+	a.stormCount = 0
+
+	for {
 		a.maybeCompact(ctx)
-		// 每轮都从唯一日志重建请求（system 单独前置，不入历史）。
 		msg, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
@@ -40,43 +35,34 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		if msg.Content != "" {
 			a.recordEvent("assistant", msg.Content, "")
 		}
-		// assistant 消息（可能带 tool_calls）进入日志。
 		a.session.Add(msg)
 
-		// 没 ToolCall → 任务完成（保存 Checkpoint）。
 		if len(msg.ToolCalls) == 0 {
 			a.SaveCheckpoint()
 			return msg.Content, nil
 		}
 
-		// 有 ToolCall → 执行。每个 tool_call 都必须回一条 tool 结果，否则会留下悬空的
-		// assistant(tool_calls)，破坏「调用/结果」配对、下轮请求即报错。
-		// 只读工具并发跑、写/高危工具串行（详见 dispatchToolCalls）。
-		a.dispatchToolCalls(msg.ToolCalls)
+		// 执行工具 + 风暴检测
+		results, storm := a.dispatchAndDetect(msg.ToolCalls)
+		if storm != "" {
+			a.recordEvent("loop_guard", storm, "")
+			a.noticef("  ⚡ %s\n", storm)
+			a.SaveCheckpoint()
+			return results[0], fmt.Errorf("%s", storm)
+		}
 	}
-
-	a.SaveCheckpoint()
-	return "", fmt.Errorf("达到最大循环次数 %d", maxLoops)
 }
 
-// dispatchToolCalls 执行一条 assistant 消息里的全部 tool_call，并把结果按**原始顺序**
-// 回灌进会话历史（保持「调用/结果」配对，乱序会破坏接口要求的配对约束）。
-//
-// 并发策略（TODO #9）：只读工具（read_file / grep / glob / code_search / web_fetch 等）
-// 互不冲突、不读 stdin、也不向终端流式输出，故并发执行，缩短一轮里多次读取的总耗时；
-// 写 / 高危工具（write_file / edit_file_block / run_shell / git_commit）保持串行——
-// 既避免文件写竞争与流式输出错乱，也让需要 stdin 确认的高危操作不互相抢输入。
-// 两组在时间上重叠：并发读在后台跑的同时，主协程串行处理写操作。
-func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
+// dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，
+// 不再回灌原始错误给 LLM，而是注入 [loop guard] 指令让它换方案。
+func (a *Agent) dispatchAndDetect(toolCalls []openai.ToolCall) ([]string, string) {
 	results := make([]string, len(toolCalls))
 
-	// 1) 记录调用事件（串行、有序，便于审计）。
 	for _, tc := range toolCalls {
 		a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
 		a.emitToolCall(tc.Function.Name, tc.Function.Arguments)
 	}
 
-	// 2) 并发启动只读工具。每个 goroutine 只写自己那格 results[i]（互不重叠，无共享写）。
 	var wg sync.WaitGroup
 	for i, tc := range toolCalls {
 		if !a.canRunParallel(tc) {
@@ -89,7 +75,6 @@ func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
 		}(i, tc)
 	}
 
-	// 3) 串行执行写 / 高危 / 需确认 / 未知工具（与上面的并发读在时间上重叠）。
 	for i, tc := range toolCalls {
 		if a.canRunParallel(tc) {
 			continue
@@ -99,7 +84,6 @@ func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
 
 	wg.Wait()
 
-	// 4) 按原始顺序回灌结果（串行）：记录结果事件、写入历史、按节奏存档。
 	for i, tc := range toolCalls {
 		a.recordEvent("tool_result", results[i], tc.Function.Name)
 		a.emitToolResult(tc.Function.Name, truncate(results[i], 100))
@@ -111,16 +95,81 @@ func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
 			a.SaveCheckpoint()
 		}
 	}
+
+	// 风暴检测
+	if storm, hit := a.checkStorm(toolCalls, results); hit {
+		subj := toolCalls[0].Function.Name
+		results[0] = results[0] + "\n\n" + storm
+		return results, fmt.Sprintf("[loop guard] %s has now failed %d times in a row with the same error — change approach or use a different tool", subj, a.stormCount)
+	}
+
+	return results, ""
 }
 
-// canRunParallel 判断一个工具调用能否安全并发执行：必须是已注册的只读工具，
-// 且当前权限门对它直接放行（GateAllow，不需 stdin 确认、也未被拒绝）。其余一律串行。
+const stormThreshold = 3
+
+func (a *Agent) checkStorm(calls []openai.ToolCall, results []string) (string, bool) {
+	if len(calls) == 0 {
+		a.stormCount = 0
+		return "", false
+	}
+	sig := stormSignature(calls, results)
+	if sig == "" {
+		a.stormSig, a.stormCount = "", 0
+		return "", false
+	}
+	if sig != a.stormSig {
+		a.stormSig, a.stormCount = sig, 1
+		return "", false
+	}
+	a.stormCount++
+	if a.stormCount < stormThreshold {
+		return "", false
+	}
+	return fmt.Sprintf(
+		"[loop guard] %q has now failed %d times in a row with the same error. Re-sending it — even with the wording changed — will not help: the calls keep failing the same way. Change approach: if an argument is being truncated, write less in one call and split the work into several smaller calls; otherwise fix the arguments, use a different tool, or explain the blocker in your final answer.",
+		calls[0].Function.Name, a.stormCount,
+	), true
+}
+
+func stormSignature(calls []openai.ToolCall, results []string) string {
+	var b []string
+	for i, tc := range calls {
+		r := results[i]
+		if !isErrorResult(r) {
+			return ""
+		}
+		b = append(b, fmt.Sprintf("%s:%s", tc.Function.Name, errorPrefix(r)))
+	}
+	return strings.Join(b, "|")
+}
+
+func isErrorResult(r string) bool {
+	return strings.Contains(r, "失败") || strings.Contains(r, "❌") ||
+		strings.Contains(r, "error") || strings.Contains(r, "Error") ||
+		strings.Contains(r, "已拒绝")
+}
+
+func errorPrefix(r string) string {
+	s := strings.TrimSpace(r)
+	if len(s) > 80 {
+		s = s[:80]
+	}
+	return s
+}
+
+// dispatchToolCalls 保留（测试中直接调用），内部委托给 dispatchAndDetect。
+func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
+	a.dispatchAndDetect(toolCalls)
+}
+
+// canRunParallel 判断一个工具调用能否安全并发执行
 func (a *Agent) canRunParallel(tc openai.ToolCall) bool {
 	if _, ok := a.allTools[tc.Function.Name]; !ok {
-		return false // 未知工具：交给串行路径回灌「未知工具」错误
+		return false
 	}
 	if !isReadOnlyTool(tc.Function.Name) {
-		return false // 写 / 高危：串行，规避竞争与 stdin 抢占
+		return false
 	}
 	gate := a.gate
 	if gate == nil {
@@ -131,10 +180,6 @@ func (a *Agent) canRunParallel(tc openai.ToolCall) bool {
 }
 
 // executeToolCall 执行单个工具调用并返回结果文本。
-//
-// 不变量：无论成功、未知工具、还是被用户取消，都必须返回一段文本作为 tool 结果
-// 回灌给模型——这样每个 tool_call 都有配对的 tool 结果，历史始终合法。
-// 这也使未知工具从「直接中断整轮」变成「把错误喂回，让模型自我纠正」。
 func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 	t, ok := a.allTools[tc.Function.Name]
 	if !ok {
@@ -149,19 +194,16 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		return result
 	}
 
-	// 经由权限门裁决：放行 / 确认 / 拒绝。Gate 可插拔（默认高危确认，可切换只读等）。
 	gate := a.gate
 	if gate == nil {
 		gate = ConfirmHighRiskGate{}
 	}
 	switch decision, reason := gate.Check(tc.Function.Name, tc.Function.Arguments); decision {
 	case GateDeny:
-		// 拒绝也要回灌一条结果，让模型据此改用只读方式，而非中断整轮。
 		result := fmt.Sprintf("已拒绝执行 %s：%s。请改用只读手段（如 read_file / grep / code_search）", tc.Function.Name, reason)
 		a.noticef("  🚫 %s\n", result)
 		return result
 	case GateConfirm:
-		// 确认走统一输入读取器，避免与主循环混用 stdin。
 		a.debugf("  🔐 %s：%s(%s)\n", reason, tc.Function.Name, tc.Function.Arguments)
 		a.emitPrompt("  确认执行？[Y/n] ")
 		if !a.confirm() {
@@ -182,9 +224,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 			Model:    a.model,
 			Messages: messages,
 			Tools:    a.toolDefinitions(),
-			// 思考模式强度（DeepSeek V4：high / max）；thinking 关闭时被忽略。空串走服务端默认。
 			ReasoningEffort: a.reasoningEffort,
-			// 让流式响应在末尾带上用量统计（prompt_tokens 等），用于按窗口比例触发压缩。
 			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
 		},
 	)
@@ -206,7 +246,6 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 			return openai.ChatCompletionMessage{}, err
 		}
 
-		// 用量统计单独走一个 choices 为空的尾包，必须在 continue 之前捕获。
 		if resp.Usage != nil && resp.Usage.PromptTokens > 0 {
 			usage = *resp.Usage
 		}
@@ -216,8 +255,6 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		}
 		delta := resp.Choices[0].Delta
 
-		// 思考模式：reasoning 先于答案流出，灰显展示但**不入历史**（DeepSeek 下一轮会忽略它，
-		// 留着只会白占上下文）。
 		if delta.ReasoningContent != "" {
 			reasoning += delta.ReasoningContent
 			a.emitReasoning(delta.ReasoningContent)
@@ -225,7 +262,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 		if delta.Content != "" {
 			if reasoning != "" && content == "" {
-				a.emitToken("\n") // 思考链与最终答案之间空一行
+				a.emitToken("\n")
 			}
 			content += delta.Content
 			a.emitToken(delta.Content)
@@ -260,8 +297,6 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		a.emitToken("\n")
 	}
 
-	// 记录这次请求的真实用量：prompt_tokens 供 maybeCompact 按窗口比例判定，
-	// 完整 usage（含缓存命中 / 思考 token）计入会话累计供 /usage 展示（TODO #14）。
 	if usage.PromptTokens > 0 {
 		a.lastPromptTokens = usage.PromptTokens
 		a.accountUsage(usage)
@@ -283,5 +318,3 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
-
-

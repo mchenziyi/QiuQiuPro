@@ -62,6 +62,10 @@ type Agent struct {
 	// 工具 Hook（TODO #16）：所有工具执行前后统一经过 hook 链。
 	toolHooks []ToolHook
 
+	// 风暴检测：跟踪连续同类工具错误的次数（参照 Reasonix stormBreaker）。
+	stormSig   string
+	stormCount int
+
 	// 偏好/规则型长期记忆（TODO #17）：由模型通过受限工具自主写入，system prompt 稳定注入。
 	memoryStore *MemoryStore
 }
@@ -134,5 +138,6 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	a.usage.AddUsage(sub.usage)
 	return result, err
 }
+
 
 
