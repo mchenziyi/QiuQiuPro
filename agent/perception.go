@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -133,7 +133,7 @@ Use false for explanations, simple questions, single obvious edits, direct comma
 var complexIntentTerms = []string{
 	"implement", "add support", "refactor", "migrate", "redesign", "end-to-end",
 	"e2e", "wire up", "integration", "fix the issue", "build a",
-	"实现", "新增", "支持", "重构", "迁移", "改造", "端到端", "联调", "接入",
+	"实现", "新增", "支持", "重构", "迁移", "改造", "装", "安装", "集成", "端到端", "联调", "接入",
 	"修复这个问题", "修一下这个问题", "补齐", "设计",
 }
 
@@ -180,3 +180,4 @@ func extractJSONObject(s string) string {
 	}
 	return s
 }
+
