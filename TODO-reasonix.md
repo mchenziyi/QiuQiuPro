@@ -39,3 +39,4 @@
 - **LLM Provider 抽象** — 暂缓（当前只需 DeepSeek）
 - **RAG / 知识型记忆** — 不做（coding Agent 不需要）
 
+

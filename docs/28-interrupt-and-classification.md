@@ -1,56 +1,54 @@
-﻿# 28 — 中断机制 + 分类简化
+﻿# 28 — 中断机制（Ctrl+C 打断当前操作，会话继续）
 
 ## 为什么要做
 
-### 中断
+通过思维链看到模型跑偏了，只能干等——没有中途打断的手段。Reasonix 和 Claude Code 都有 Ctrl+C 中断处理。
 
-用户通过思维链看到模型跑偏了，但只能干等——没有中途打断的手段。Reasonix 和 Claude Code 都有 Ctrl+C 中断处理。
-
-### 分类简化
-
-LLM 分类器本质不可靠：prompt 写得再好也有概率判错。"帮我把 codeGraph 装到项目中"被判 ask，一轮烧了 97 万 token。
+第一版实现错误地把 `cancel(ctx)` 当成中断——这会杀掉整个 context，导致会话终止，完全不符合预期。
 
 ## 做了什么
 
-### 1. Ctrl+C 中断
+### 1. Agent 新增 `interrupt` channel
 
-```
-main.go: signal.Notify(os.Interrupt) → cancel context
-  ↓
-Run() 循环每轮检查 ctx.Done()
-  ↓
-收到中断 → SaveCheckpoint → 优雅退出
-```
-
-中断后上下文已保存，下次启动可以从快照恢复。
-
-### 2. 分类策略砍掉 LLM，改默认 Plan
-
-```
-// 之前：LLM 分类器 + 启发式打分（100+ 行，不可靠）
-DetectMode → LLM API 调用 → 返回 ask/plan
-
-// 之后：简单规则（40 行，确定性强）
-DetectMode → isConversational? → ask : plan
+```go
+type Agent struct {
+    ...
+    interrupt chan struct{}  // 用户按 Ctrl+C 时关闭，Run 循环检测到后优雅退出
+}
 ```
 
-判断逻辑：
-- ≤10 字符 → ask（你好、嗯、谢谢）
-- 提问模式开头 AND 不含代码操作词 → ask（"什么是context"、"帮我分析"）
-- 其余全部 → plan
+每次 `Run()` 开始时重建 channel，上一轮的中断不影响下一轮。
 
-核心原则：**Go to plan wrongly is harmless（多走几步计划流程）。Go to ask wrongly costs millions of tokens（在 Run 里无限工具循环）。**
+### 2. Interrupt() 方法
+
+关闭 channel，Run 循环下一轮检测到后：
+1. 打印 `⚡ 已中断当前操作`
+2. `SaveCheckpoint()` 保存当前状态
+3. 返回 `interrupted` 错误
+4. 主循环继续等待用户输入
+
+### 3. 信号绑定
+
+```go
+// main.go
+signal.Notify(sigCh, os.Interrupt)
+go func() {
+    for range sigCh {
+        a.Interrupt()  // 只打断当前操作
+    }
+}()
+```
 
 ## 改动文件
 
 | 文件 | 改动 |
 |------|------|
-| `agent/perception.go` | 砍掉 LLM 分类器，简化为纯规则 40 行 |
-| `main.go` | signal.Notify + 所有模式分支加 ctx.Err() 检查 |
-| `agent/run.go` | Run 循环每轮检查 ctx.Done() |
+| `agent/agent.go` | 新增 `interrupt chan struct{}` 字段 |
+| `agent/run.go` | Run 循环头检查 interrupt channel + Interrupt() 方法 |
+| `main.go` | signal.Notify → a.Interrupt()（不再 cancel context） |
 
 ## 效果
 
-- Ctrl+C 可在任意时刻中断（LLM 请求中除外——HTTP 连接需等服务端响应）
-- 分类不再依赖 LLM，零成本、零误判
-- 命令行体验与 Reasonix/Claude Code 一致
+- 按 Ctrl+C → 停当前工具/LLM调用 → 会话继续 → 可以告诉模型你的想法
+- 中断后快照已保存，下次启动可恢复
+- 每次 Run 独立中断 channel，互不影响
