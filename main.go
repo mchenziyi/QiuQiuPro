@@ -1,4 +1,4 @@
-﻿// 球球 Agent — 主入口
+// 球球 Agent — 主入口
 package main
 
 import (
@@ -99,6 +99,7 @@ func main() {
 	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.RegisterTool(a.NewRememberRuleTool())
+	a.RegisterTool(a.NewAskTool())
 	a.Quiet = *quiet
 	// 上下文窗口可经环境变量覆盖（默认贴合 DeepSeek V4 的 1M）；切到更小窗口的模型时务必调小。
 	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_CONTEXT_WINDOW")); v != "" {
