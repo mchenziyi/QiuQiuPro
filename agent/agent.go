@@ -80,7 +80,7 @@ func New(apiKey, model string) *Agent {
 		store:       event.NewStore(".reasonix/sessions"),
 		session:     NewSession(fmt.Sprintf("session_%d", time.Now().Unix())),
 		cmdRegistry: command.NewRegistry(),
-		Mode:        "plan",
+		Mode: "auto",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
 		sysPrompt:   "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。",

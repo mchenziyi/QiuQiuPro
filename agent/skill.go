@@ -30,7 +30,7 @@ func (a *Agent) CurrentSkillName() string {
 
 // SetMode 切换 Agent 运行模式：plan（规划执行）| ask（直接问答）
 func (a *Agent) SetMode(mode string) {
-	if mode != "ask" && mode != "plan" {
+	if mode != "ask" && mode != "plan" && mode != "auto" {
 		a.noticef("  ⚠️  未知模式：%s，可选：plan（规划执行）/ ask（直接问答）\n", mode)
 		return
 	}
