@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"bufio"
@@ -25,6 +25,7 @@ import (
 //   - plan.go       规划 / 反思 / 重规划
 type Agent struct {
 	client          *openai.Client
+	apiKey          string
 	model           string
 	allTools        map[string]tool.Tool
 	activeTools     []string
@@ -75,6 +76,7 @@ func New(apiKey, model string) *Agent {
 	config.HTTPClient = newDeepSeekHTTPClient(thinking)
 	a := &Agent{
 		client:      openai.NewClientWithConfig(config),
+		apiKey:      apiKey,
 		model:       model,
 		allTools:    make(map[string]tool.Tool),
 		store:       event.NewStore(".reasonix/sessions"),
@@ -132,3 +134,5 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	a.usage.AddUsage(sub.usage)
 	return result, err
 }
+
+
