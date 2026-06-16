@@ -463,6 +463,50 @@ func main() {
 				fmt.Printf("\n🤖 %s\n", answer)
 			}
 
+		case "auto":
+			// Auto 模式：轻量分类后自动路由
+			detected, err := a.DetectMode(ctx, input)
+			if err != nil {
+				fmt.Printf("  ⚠️  意图分类失败，退化到 plan：%v\n", err)
+				detected = "plan"
+			}
+			if detected == "ask" {
+				fmt.Printf("  🔍 检测到简单对话，走 Ask 模式\n")
+				answer, err := a.Run(ctx, input)
+				if err != nil {
+					fmt.Printf("❌ 回答失败：%v\n", err)
+				} else {
+					fmt.Printf("\n🤖 %s\n", answer)
+				}
+			} else {
+				fmt.Printf("  🔍 检测到开发任务，走 Plan 模式\n")
+				fmt.Println("📋 正在拆解计划...")
+				plan, err := a.GeneratePlan(ctx, input)
+				if err != nil {
+					fmt.Printf("❌ 规划失败：%v\n", err)
+					continue
+				}
+				fmt.Println("📋 计划如下：")
+				for _, s := range plan.Steps {
+					fmt.Printf("  %d. %s\n", s.ID, s.Desc)
+				}
+
+				fmt.Println("\n🔍 正在审查计划质量...")
+				plan, _ = a.ReviewPlan(ctx, plan)
+
+				fmt.Println("\n🚀 开始执行...")
+				err = a.ExecutePlan(ctx, plan)
+				if err != nil {
+					if errors.Is(err, agent.ErrPlanPaused) {
+						continue
+					}
+					fmt.Printf("❌ 执行失败：%v\n", err)
+					continue
+				}
+				fmt.Println("\n🎉 全部完成！")
+				a.TrimMessages()
+			}
+
 		case "plan":
 			// Plan 模式：规划 → 执行（原有流程）
 			fmt.Println("📋 正在拆解计划...")
