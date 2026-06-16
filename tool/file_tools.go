@@ -57,7 +57,7 @@ func NewWriteFileTool() Tool {
 // NewListDirectoryTool 列出目录内容
 func NewListDirectoryTool() Tool {
 	return Tool{
-		Name: "list_directory", Description: "列出指定目录下的文件和子目录",
+		Name: "ls", Description: "列出指定目录下的文件和子目录",
 		Parameters: map[string]any{
 			"type": "object", "properties": map[string]any{
 				"path": map[string]any{"type": "string", "description": "目录路径"},
@@ -119,3 +119,4 @@ func NewCountFileCharsTool() Tool {
 		},
 	}
 }
+

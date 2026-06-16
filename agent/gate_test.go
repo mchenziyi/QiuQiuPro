@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"bufio"
@@ -18,13 +18,13 @@ func TestGateCheck(t *testing.T) {
 	}{
 		// 默认门：高危确认，其余放行
 		{ConfirmHighRiskGate{}, "write_file", GateConfirm},
-		{ConfirmHighRiskGate{}, "run_shell", GateConfirm},
+		{ConfirmHighRiskGate{}, "bash", GateConfirm},
 		{ConfirmHighRiskGate{}, "read_file", GateAllow},
 		{ConfirmHighRiskGate{}, "git_commit", GateAllow}, // 不改变既有行为：提交仍直接放行
 		// 只读门：改动类一律拒绝
 		{ReadOnlyGate{}, "write_file", GateDeny},
 		{ReadOnlyGate{}, "edit_file_block", GateDeny},
-		{ReadOnlyGate{}, "run_shell", GateDeny},
+		{ReadOnlyGate{}, "bash", GateDeny},
 		{ReadOnlyGate{}, "git_commit", GateDeny},
 		{ReadOnlyGate{}, "read_file", GateAllow},
 		{ReadOnlyGate{}, "code_search", GateAllow},
@@ -131,3 +131,4 @@ func TestReadOnlyToggle(t *testing.T) {
 		t.Fatal("nil gate 的 GateName 应回退为 confirm")
 	}
 }
+

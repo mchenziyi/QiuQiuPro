@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"encoding/json"
@@ -69,7 +69,7 @@ func (a *Agent) toolDefinitions() []openai.Tool {
 var highRiskTools = map[string]bool{
 	"write_file":      true,
 	"edit_file_block": true,
-	"run_shell":       true,
+	"bash":       true,
 	"run_powershell":  true,
 }
 
@@ -87,3 +87,4 @@ func isReadOnlyTool(name string) bool {
 	}
 	return !IsHighRiskTool(name) && name != "git_commit"
 }
+

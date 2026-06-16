@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"fmt"
@@ -124,7 +124,7 @@ func TestDispatchToolCalls_WritesRunSerially(t *testing.T) {
 // canRunParallel：已注册的只读工具 + 权限门放行 才可并发；其余一律串行。
 func TestCanRunParallel(t *testing.T) {
 	a := newDispatchAgent(t, ConfirmHighRiskGate{})
-	for _, name := range []string{"read_file", "code_search", "write_file", "run_shell", "git_commit"} {
+	for _, name := range []string{"read_file", "code_search", "write_file", "bash", "git_commit"} {
 		a.allTools[name] = tool.Tool{Name: name, Execute: func(string) string { return "" }}
 	}
 
@@ -135,7 +135,7 @@ func TestCanRunParallel(t *testing.T) {
 		{"read_file", true},
 		{"code_search", true},
 		{"write_file", false},   // 高危
-		{"run_shell", false},    // 高危
+		{"bash", false},    // 高危
 		{"git_commit", false},   // 改仓库
 		{"no_such_tool", false}, // 未注册
 	}
@@ -154,3 +154,4 @@ func TestCanRunParallel(t *testing.T) {
 		t.Error("只读门下 write_file 应被拒、不可并行")
 	}
 }
+

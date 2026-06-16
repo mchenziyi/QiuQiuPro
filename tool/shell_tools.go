@@ -25,7 +25,7 @@ const (
 func NewRunShellTool() Tool {
 	shell, arg := detectShell()
 	return Tool{
-		Name: "run_shell", Description: "执行一条 Shell 命令。自动适配当前系统，实时显示输出，并按退出码判断是否成功",
+		Name: "bash", Description: "执行一条 Shell 命令。自动适配当前系统，实时显示输出，并按退出码判断是否成功",
 		Parameters: map[string]any{
 			"type": "object", "properties": map[string]any{
 				"command": map[string]any{"type": "string", "description": "要执行的 Shell 命令"},
@@ -145,3 +145,4 @@ func detectShell() (string, string) {
 		return "sh", "-c"
 	}
 }
+
