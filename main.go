@@ -465,10 +465,6 @@ func main() {
 
 		case "auto":
 			// Auto 模式：轻量分类后自动路由
-			if ctx.Err() != nil {
-				fmt.Println("\n  ⚡ 已中断")
-				continue
-			}
 			detected, err := a.DetectMode(ctx, input)
 			if err != nil {
 				fmt.Printf("  ⚠️  意图分类失败，退化到 plan：%v\n", err)
@@ -541,6 +537,7 @@ func main() {
 		}
 	}
 }
+
 
 
 

@@ -53,6 +53,17 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	}
 }
 
+
+// Interrupt 中断当前 Run：关闭 interrupt channel，让下一次循环检查时优雅退出。
+// 中断后会话状态已保存，用户可继续输入，模型从快照恢复。
+func (a *Agent) Interrupt() {
+	select {
+	case <-a.interrupt:
+	default:
+		close(a.interrupt)
+	}
+}
+
 // dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，
 // 不再回灌原始错误给 LLM，而是注入 [loop guard] 指令让它换方案。
 func (a *Agent) dispatchAndDetect(toolCalls []openai.ToolCall) ([]string, string) {
@@ -318,4 +329,5 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
+
 
