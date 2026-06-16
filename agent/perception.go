@@ -65,14 +65,11 @@ func autoPlanScore(input string) int {
 // 走启发式打分 + 兜底 LLM 分类器（仅对模糊输入调用）。
 func (a *Agent) DetectMode(ctx context.Context, input string) (string, error) {
 	score := autoPlanScore(input)
-	if score <= 0 {
-		return "ask", nil
-	}
 	if score >= 3 {
 		return "plan", nil
 	}
 
-	// score 1-2：模糊区间，调 LLM 分类器
+	// score 0-2：都走 LLM 分类器（启发式对短任务漏判太多，拿误判换 API 调用不划算）
 	needsPlan, reason, err := a.classifyNeedsPlan(ctx, input, score)
 	if err != nil {
 		// 分类器失败 → 退化到启发式（score ≥2 即 plan）
@@ -189,5 +186,6 @@ func extractJSONObject(s string) string {
 	}
 	return s
 }
+
 
 
