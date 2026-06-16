@@ -7,6 +7,7 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -54,14 +55,10 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 }
 
 
-// Interrupt 中断当前 Run：关闭 interrupt channel，让下一次循环检查时优雅退出。
-// 中断后会话状态已保存，用户可继续输入，模型从快照恢复。
+// Interrupt 中断当前 Run：设置 interrupted 标志。ReadLine 检测到后重置并继续等待输入，
+// Run 循环检测到后停止当前操作并返回。
 func (a *Agent) Interrupt() {
-	select {
-	case <-a.interrupt:
-	default:
-		close(a.interrupt)
-	}
+	atomic.StoreInt32(&a.interrupted, 1)
 }
 
 // dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，
@@ -329,6 +326,9 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
+
+
+
 
 
 

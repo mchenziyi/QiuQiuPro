@@ -66,9 +66,9 @@ type Agent struct {
 	stormSig   string
 	stormCount int
 
-	// 中断控制：用户按 Ctrl+C 时关闭此 channel，Run 循环检测后停止当前操作，
-	// 保存快照，返回给主循环让用户继续输入。每次 Run 开始时重建。
-	interrupt   chan struct{}
+	// 中断控制：用户按 Ctrl+C 时设为 1，ReadLine 检测后重置为 0 继续等待；
+	// Run 循环每轮检测，若为 1 则停止当前操作并返回。
+	interrupted int32
 
 	// 偏好/规则型长期记忆（TODO #17）：由模型通过受限工具自主写入，system prompt 稳定注入。
 	memoryStore *MemoryStore
@@ -142,6 +142,7 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	a.usage.AddUsage(sub.usage)
 	return result, err
 }
+
 
 
 
