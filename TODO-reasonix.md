@@ -49,11 +49,11 @@
 
 ### 🥇 优先做
 
-#### 20. 提示词全面优化（参照 Reasonix）
-- system prompt：从"身份声明"改为"行为指令 + 工具使用场景"
-- plan prompt：细化步骤粒度判断 + 依赖感知
-- 词库补齐：complexIntentTerms 补漏
-- 难度：★★★☆☆
+#### ✅ 20. 提示词全面优化 — 已完成
+- system prompt：Reasonix 风格（场景→工具→行为）
+- plan prompt：砍角色声明，保留核心指令
+- 详见 docs/30-prompt-rewrite.md
+- 文件：prompt/default/system.xml + prompt/plan/*.xml
 
 #### 21. 工具接口改造（ctx + error 返回）
 - `Execute func(args string) string` → `Execute(ctx, args) (string, error)`
@@ -86,3 +86,4 @@
 #### 27. finish_reason 映射
 - 模型被截断/内容过滤了都不知道
 - 难度：★☆☆☆☆
+
