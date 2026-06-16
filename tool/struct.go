@@ -1,4 +1,4 @@
-﻿// Package tool 定义了 Agent 可调用的工具
+// Package tool 定义了 Agent 可调用的工具
 package tool
 
 // Tool 定义一个 Agent 可调用的工具
@@ -15,14 +15,15 @@ func AllBuiltInTools() []Tool {
 		NewReadFileTool(),
 		NewWriteFileTool(),
 		NewListDirectoryTool(),
-		NewCountFileCharsTool(),
-		NewEditFileBlockTool(),
+		NewEditFileTool(),
+		NewMultiEditTool(),
+		NewDeleteRangeTool(),
+		NewDeleteSymbolTool(),
+		NewTodoWriteTool(),
 		NewSearchFilesTool(), NewGlobTool(), NewGrepTool(),
 		NewCodeSearchTool(),
 		NewWebFetchTool(),
 		NewGitCommitTool(),
-		NewRunPowerShellTool(),
 		NewRunShellTool(),
 	}
 }
-

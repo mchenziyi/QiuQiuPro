@@ -1,15 +1,15 @@
-﻿package agent
+package agent
 
 import "testing"
 
 func TestIsHighRiskTool(t *testing.T) {
-	high := []string{"write_file", "edit_file_block", "bash", "run_powershell"}
+	high := []string{"write_file", "edit_file", "bash", }
 	for _, name := range high {
 		if !IsHighRiskTool(name) {
 			t.Errorf("%s 应被判为高危", name)
 		}
 	}
-	safe := []string{"read_file", "ls", "glob", "grep", "search_files", "count_file_chars", "git_commit", "unknown_tool", ""}
+	safe := []string{"read_file", "ls", "glob", "grep", "search_files", "git_commit", "unknown_tool", ""}
 	for _, name := range safe {
 		if IsHighRiskTool(name) {
 			t.Errorf("%s 不应被判为高危", name)
@@ -53,4 +53,7 @@ func TestStripCodeFence(t *testing.T) {
 		}
 	}
 }
+
+
+
 

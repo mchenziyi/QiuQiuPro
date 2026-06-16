@@ -1,4 +1,4 @@
-﻿package tool
+package tool
 
 import (
 	"bytes"
@@ -44,30 +44,7 @@ func NewRunShellTool() Tool {
 	}
 }
 
-// NewRunPowerShellTool 执行 PowerShell 命令（仅 Windows 可用）
-func NewRunPowerShellTool() Tool {
-	return Tool{
-		Name: "run_powershell", Description: "执行一条 PowerShell 命令（仅 Windows 可用）。macOS/Linux 用户请用 run_shell",
-		Parameters: map[string]any{
-			"type": "object", "properties": map[string]any{
-				"command": map[string]any{"type": "string", "description": "要执行的 PowerShell 命令"},
-			}, "required": []string{"command"},
-		},
-		Execute: func(args string) string {
-			if runtime.GOOS != "windows" {
-				return fmt.Sprintf("PowerShell 仅支持 Windows，当前系统是 %s。请改用 run_shell", runtime.GOOS)
-			}
-			var p struct {
-				Command string `json:"command"`
-			}
-			json.Unmarshal([]byte(args), &p)
-			if strings.TrimSpace(p.Command) == "" {
-				return "命令为空"
-			}
-			return runCommandStreaming(runShellTimeout, "powershell", "-NoProfile", "-Command", p.Command)
-		},
-	}
-}
+
 
 // runCommandStreaming 执行命令并整理结果：
 //   - 输出实时流式打到控制台（耗时命令也能边跑边看），同时捕获（有上限）回灌给 LLM；
@@ -145,4 +122,5 @@ func detectShell() (string, string) {
 		return "sh", "-c"
 	}
 }
+
 

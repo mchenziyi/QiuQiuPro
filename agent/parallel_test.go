@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"fmt"
@@ -154,4 +154,6 @@ func TestCanRunParallel(t *testing.T) {
 		t.Error("只读门下 write_file 应被拒、不可并行")
 	}
 }
+
+
 

@@ -1,4 +1,4 @@
-﻿package tool
+package tool
 
 import (
 	"encoding/json"
@@ -7,44 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 )
-
-// NewEditFileBlockTool 精确编辑文件：找到一段旧代码，替换成新代码
-func NewEditFileBlockTool() Tool {
-	return Tool{
-		Name: "edit_file_block", Description: "精确修改文件：找到一段旧代码，替换成新代码",
-		Parameters: map[string]any{
-			"type": "object", "properties": map[string]any{
-				"path":      map[string]any{"type": "string", "description": "文件路径"},
-				"old_block": map[string]any{"type": "string", "description": "要替换的旧代码"},
-				"new_block": map[string]any{"type": "string", "description": "替换后的新代码"},
-			}, "required": []string{"path", "old_block", "new_block"},
-		},
-		Execute: func(args string) string {
-			// 必须带 json tag：schema 用 snake_case（old_block/new_block），
-			// 而 Go 的大小写不敏感匹配不会忽略下划线，无 tag 会绑不上、导致永远「出现多次」。
-			var p struct {
-				Path     string `json:"path"`
-				OldBlock string `json:"old_block"`
-				NewBlock string `json:"new_block"`
-			}
-			json.Unmarshal([]byte(args), &p)
-			data, err := os.ReadFile(p.Path)
-			if err != nil {
-				return fmt.Sprintf("读文件失败：找不到 %s", p.Path)
-			}
-			text := string(data)
-			if !strings.Contains(text, p.OldBlock) {
-				return fmt.Sprintf("修改失败：找不到指定的旧代码")
-			}
-			if strings.Count(text, p.OldBlock) > 1 {
-				return fmt.Sprintf("修改失败：旧代码出现多次，请提供更多上下文")
-			}
-			text = strings.Replace(text, p.OldBlock, p.NewBlock, 1)
-			os.WriteFile(p.Path, []byte(text), 0644)
-			return fmt.Sprintf("已修改 %s", p.Path)
-		},
-	}
-}
 
 // NewSearchFilesTool 搜索文件：按文件名或内容
 func NewSearchFilesTool() Tool {
@@ -152,4 +114,5 @@ func searchFileContent(root, keyword string) string {
 	}
 	return b.String()
 }
+
 

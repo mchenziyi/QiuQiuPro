@@ -1,4 +1,4 @@
-﻿package tool
+package tool
 
 import (
 	"encoding/json"
@@ -119,4 +119,5 @@ func NewCountFileCharsTool() Tool {
 		},
 	}
 }
+
 
