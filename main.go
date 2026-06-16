@@ -454,6 +454,7 @@ func main() {
 		}
 
 		// 按模式分支
+		// 按模式分支
 		switch a.CurrentMode() {
 		case "ask":
 			// Ask 模式：直接问答，不走规划
@@ -464,81 +465,35 @@ func main() {
 				fmt.Printf("\n🤖 %s\n", answer)
 			}
 
-		case "auto":
-			// Auto 模式：轻量分类后自动路由
-			detected, err := a.DetectMode(ctx, input)
-			if err != nil {
-				fmt.Printf("  ⚠️  意图分类失败，退化到 plan：%v\n", err)
-				detected = "plan"
-			}
-			if detected == "ask" {
-				fmt.Printf("  🔍 检测到简单对话，走 Ask 模式\n")
-				answer, err := a.Run(ctx, input)
-				if err != nil {
-					fmt.Printf("❌ 回答失败：%v\n", err)
-				} else {
-					fmt.Printf("\n🤖 %s\n", answer)
-				}
-			} else {
-				fmt.Printf("  🔍 检测到开发任务，走 Plan 模式\n")
-				fmt.Println("📋 正在拆解计划...")
-				plan, err := a.GeneratePlan(ctx, input)
-				if err != nil {
-					fmt.Printf("❌ 规划失败：%v\n", err)
-					continue
-				}
-				fmt.Println("📋 计划如下：")
-				for _, s := range plan.Steps {
-					fmt.Printf("  %d. %s\n", s.ID, s.Desc)
-				}
-
-				fmt.Println("\n🔍 正在审查计划质量...")
-				plan, _ = a.ReviewPlan(ctx, plan)
-
-				fmt.Println("\n🚀 开始执行...")
-				err = a.ExecutePlan(ctx, plan)
-				if err != nil {
-					if errors.Is(err, agent.ErrPlanPaused) {
-						continue
-					}
-					fmt.Printf("❌ 执行失败：%v\n", err)
-					continue
-				}
-				fmt.Println("\n🎉 全部完成！")
-				a.TrimMessages()
-			}
-
 		case "plan":
-			// Plan 模式：规划 → 执行（原有流程）
-			fmt.Println("📋 正在拆解计划...")
-			plan, err := a.GeneratePlan(ctx, input)
+			// Plan 模式：只读调研 → 方案审批 → 执行
+			a.SetPlanMode(true)
+			fmt.Println("  📋 正在调研方案...（只读模式，不会修改代码）")
+			plan, err := a.Run(ctx, input)
 			if err != nil {
-				fmt.Printf("❌ 规划失败：%v\n", err)
+				fmt.Printf("❌ 调研失败：%v\n", err)
+				a.SetPlanMode(false)
 				continue
 			}
-			fmt.Println("📋 计划如下：")
-			for _, s := range plan.Steps {
-				fmt.Printf("  %d. %s\n", s.ID, s.Desc)
+
+			// 展示方案并请求审批
+			fmt.Printf("\n📋 方案建议：\n%s\n", plan)
+			fmt.Print("  批准执行？[Y/n] ")
+			if !a.Confirm() {
+				fmt.Println("  已取消执行，可以修改后重试")
+				a.SetPlanMode(false)
+				continue
 			}
 
-			fmt.Println("\n🔍 正在审查计划质量...")
-			plan, _ = a.ReviewPlan(ctx, plan)
-
-			fmt.Println("\n🚀 开始执行...")
-			err = a.ExecutePlan(ctx, plan)
+			// 批准执行
+			a.SetPlanMode(false)
+			fmt.Println("  ✅ 方案已批准，开始执行...")
+			_, err = a.Run(ctx, "Plan approved — implement it now. Use todo_write to track progress.")
 			if err != nil {
-				if errors.Is(err, agent.ErrPlanPaused) {
-					continue
-				}
 				fmt.Printf("❌ 执行失败：%v\n", err)
 				continue
 			}
-			fmt.Println("\n🎉 全部完成！")
-			a.TrimMessages()
+			fmt.Println("\n🎉 执行完成！")
 		}
-	}
 }
-
-
-
-
+}

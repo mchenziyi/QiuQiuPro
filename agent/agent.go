@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"time"
+	"sync/atomic"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -36,7 +37,8 @@ type Agent struct {
 	cmdRegistry     *command.Registry
 	lastEventID     string
 	Quiet           bool   // true 时隐藏中间日志
-	Mode            string // 运行模式："plan"（默认）| "ask"（直接问答）
+	Mode            string // 运行模式："plan"（规划执行）| "ask"（直接问答）
+	planMode        atomic.Bool // true=只读调研模式，写工具被拒绝
 	toolCallCount   int
 	in              *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
 	gate            Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
@@ -90,7 +92,7 @@ func New(apiKey, model string) *Agent {
 		store:       event.NewStore(".reasonix/sessions"),
 		session:     NewSession(fmt.Sprintf("session_%d", time.Now().Unix())),
 		cmdRegistry: command.NewRegistry(),
-		Mode: "auto",
+		Mode: "ask",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
 		sysPrompt:   "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。",
@@ -143,7 +145,4 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 	return result, err
 }
 
-
-
-
-
+func (a *Agent) SetPlanMode(v bool) { a.planMode.Store(v) }
