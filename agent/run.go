@@ -52,6 +52,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 			a.SaveCheckpoint()
 			return results[0], fmt.Errorf("%s", storm)
 		}
+
 	}
 }
 
@@ -196,6 +197,14 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		a.debugf("  ⚠️  %s\n", result)
 		return result
 	}
+
+	// Plan mode gate: 只读模式下拒绝写工具
+	if a.planMode.Load() && !t.ReadOnly {
+		result := fmt.Sprintf("blocked: %q is a writer tool and plan mode is read-only. Keep exploring with read-only tools.", tc.Function.Name)
+		a.noticef("  🔍 %s\n", result)
+		return result
+	}
+
 	hookCtx := a.toolHookContext(tc.Function.Name, tc.Function.Arguments)
 	if ok, reason := a.beforeToolHooks(hookCtx); !ok {
 		result := fmt.Sprintf("已拒绝执行 %s：%s", tc.Function.Name, reason)
@@ -328,6 +337,4 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
-
-
 
