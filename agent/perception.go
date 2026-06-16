@@ -1,201 +1,70 @@
-﻿package agent
+package agent
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"regexp"
 	"strings"
-	"time"
 	"unicode/utf8"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
-// ========== 感知层：自动判断用户意图走 Ask 还是 Plan ==========
-// 三层策略（参照 Reasonix）：
-//   1. 启发式打分（0-7）——基于输入长度、结构、关键词
-//   2. 分数 0 → 立即 Ask；分数 ≥3 → 立即 Plan
-//   3. 分数 1-2 → LLM 分类器（JSON 返回，Temperature=0，3s 超时）
-
-var numberedListRE = regexp.MustCompile(`(?m)^\s*(?:[-*]|\d+[.)])\s+\S`)
-
-// autoPlanScore 对用户输入做启发式打分，0=纯对话，越高越像开发任务。
-func autoPlanScore(input string) int {
-	text := strings.TrimSpace(input)
-	if text == "" || strings.HasPrefix(text, "/") {
-		return 0
-	}
-	lower := strings.ToLower(text)
-
-	// 低风险问题：以提问关键词开头且不含复杂术语 → 直接放行
-	if isLowRiskQuestion(lower) {
-		return 0
-	}
-
-	score := 0
-	if utf8.RuneCountInString(text) >= 160 {
-		score++
-	}
-	if numberedListRE.MatchString(text) {
-		score++
-	}
-	if strings.Count(text, "\n") >= 2 {
-		score++
-	}
-	if containsAny(lower, complexIntentTerms) {
-		score++
-	}
-	if containsAny(lower, multiSurfaceTerms) {
-		score++
-	}
-	if containsAny(lower, docsAndIssueTerms) {
-		score++
-	}
-	// 多个文件引用
-	if strings.Count(text, "@") >= 2 || strings.Count(lower, ".go")+
-		strings.Count(lower, ".ts")+strings.Count(lower, ".tsx")+strings.Count(lower, ".js") >= 2 {
-		score++
-	}
-	return score
-}
-
-// DetectMode 自动判断用户意图：ask（直接问答）| plan（规划执行）。
-// 走启发式打分 + 兜底 LLM 分类器（仅对模糊输入调用）。
+// DetectMode 判断用户输入走 ask 还是 plan。
+// 策略：默认走 plan（安全侧），只有明显是闲聊/提问才走 ask。
 func (a *Agent) DetectMode(ctx context.Context, input string) (string, error) {
-	score := autoPlanScore(input)
-	if score >= 3 {
-		return "plan", nil
-	}
-
-	// score 0-2：都走 LLM 分类器（启发式对短任务漏判太多，拿误判换 API 调用不划算）
-	needsPlan, reason, err := a.classifyNeedsPlan(ctx, input, score)
-	if err != nil {
-		// 分类器失败 → 退化到启发式（score ≥2 即 plan）
-		if score >= 2 {
-			return "plan", nil
-		}
+	if isConversational(input) {
 		return "ask", nil
 	}
-	if reason != "" {
-		a.noticef("  💡 %s\n", reason)
-	}
-	if needsPlan {
-		return "plan", nil
-	}
-	return "ask", nil
+	return "plan", nil
 }
 
-// classifyNeedsPlan 用轻量 LLM 调用判断是否需要 Plan（3s 超时，Temperature=0）。
-func (a *Agent) classifyNeedsPlan(ctx context.Context, input string, score int) (bool, string, error) {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
+// isConversational 判断输入是否明显是闲聊/提问（不需要文件操作、代码修改）。
+func isConversational(input string) bool {
+	text := strings.TrimSpace(input)
+	runes := utf8.RuneCountInString(text)
 
-	prompt := fmt.Sprintf(`heuristic_score=%d
-
-USER_REQUEST:
-%s`, score, input)
-
-	config := openai.DefaultConfig(a.apiKey)
-	config.BaseURL = "https://api.deepseek.com"
-	config.HTTPClient = &http.Client{Timeout: 5 * time.Second}
-	lightClient := openai.NewClientWithConfig(config)
-
-	resp, err := lightClient.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
-		Model: a.model,
-		Messages: []openai.ChatCompletionMessage{
-			{Role: "system", Content: classifyPrompt},
-			{Role: "user", Content: prompt},
-		},
-		Temperature: 0,
-		MaxTokens:   80,
-	})
-	if err != nil {
-		return false, "", fmt.Errorf("classifier call: %w", err)
+	// 非常短 → 很可能是闲聊
+	if runes <= 10 {
+		return true
 	}
 
-	content := extractJSONObject(resp.Choices[0].Message.Content)
-	var out struct {
-		NeedsPlan *bool  `json:"needs_plan"`
-		Reason    string `json:"reason"`
+	// 提问模式：以常见提问词开头
+	lower := strings.ToLower(text)
+	questionStarters := []string{
+		"什么是", "怎么", "如何", "为什么", "能不能", "可以",
+		"what ", "why ", "how ", "can ", "is ",
+		"帮我看看", "帮我查", "帮我分析", "帮我解释", "帮我看一下",
+		"解释", "说明", "介绍一下",
 	}
-	if err := json.Unmarshal([]byte(content), &out); err != nil {
-		return false, "", fmt.Errorf("decode classifier response: %w", err)
+	for _, q := range questionStarters {
+		if strings.HasPrefix(lower, q) {
+			// 但如果是"帮我分析这个项目怎么重构" → plan
+			if containsCodeAction(lower) {
+				return false
+			}
+			return true
+		}
 	}
-	if out.NeedsPlan == nil {
-		return false, "", fmt.Errorf("missing needs_plan in classifier response")
+
+	// 含代码操作词 → 不是闲聊
+	if containsCodeAction(lower) {
+		return false
 	}
-	return *out.NeedsPlan, out.Reason, nil
-}
 
-const classifyPrompt = `You classify whether a coding-agent user request should first enter read-only planning mode.
-Return ONLY JSON: {"needs_plan":true|false,"reason":"short reason"}.
-
-Use NEEDS_PLAN=true when:
-- The request involves writing, editing, creating, or deleting files
-- The request asks to install, integrate, configure, set up, or wire up something
-- The request involves multiple steps, cross-file changes, or needs investigation before acting
-- You are unsure — it is safer to plan than to skip planning
-
-Use NEEDS_PLAN=false ONLY when:
-- The request is purely a question, explanation, greeting, or chat
-- The request is a single read-only action (just looking at something)
-- You are certain no code changes or system configuration is needed`
-
-// ========== 启发式打分用词库 ==========
-
-var complexIntentTerms = []string{
-	"implement", "add support", "refactor", "migrate", "redesign", "end-to-end",
-	"e2e", "wire up", "integration", "fix the issue", "build a",
-	"实现", "新增", "支持", "重构", "迁移", "改造", "端到端", "联调", "接入",
-	"修复这个问题", "修一下这个问题", "补齐", "设计",
-}
-
-var multiSurfaceTerms = []string{
-	"multiple files", "several files", "across", "frontend", "backend", "config",
-	"tests", "docs", "ui", "api", "database", "schema",
-	"多个文件", "多处", "前端", "后端", "配置", "测试", "文档", "接口", "数据库",
-}
-
-var docsAndIssueTerms = []string{
-	"prd", "issue", "requirements", "spec", "proposal", "roadmap",
-	"需求", "产品文档", "接口文档", "方案", "规划",
-}
-
-// ========== 辅助函数 ==========
-
-func isLowRiskQuestion(lower string) bool {
-	lower = strings.TrimSpace(lower)
-	if strings.HasPrefix(lower, "解释") || strings.HasPrefix(lower, "说明") ||
-		strings.HasPrefix(lower, "怎么看") || strings.HasPrefix(lower, "查一下") ||
-		strings.HasPrefix(lower, "运行") || strings.HasPrefix(lower, "run ") ||
-		strings.HasPrefix(lower, "show ") || strings.HasPrefix(lower, "what ") ||
-		strings.HasPrefix(lower, "why ") || strings.HasPrefix(lower, "how ") {
-		return !containsAny(lower, complexIntentTerms)
-	}
+	// 默认走 plan
 	return false
 }
 
-func containsAny(s string, terms []string) bool {
-	for _, term := range terms {
-		if strings.Contains(s, term) {
+func containsCodeAction(s string) bool {
+	actions := []string{
+		"写一个", "实现", "修改", "改一下", "重构", "重写", "添加", "新增",
+		"创建", "新建", "删除", "删掉", "修复", "修一下", "优化", "升级",
+		"安装", "集成", "部署", "配置", "设置", "接入", "迁移",
+		"拆分", "合并", "生成", "搭建", "提交", "commit",
+		"implement", "refactor", "rewrite", "fix", "add", "create",
+		"delete", "install", "configure", "deploy", "migrate",
+	}
+	for _, act := range actions {
+		if strings.Contains(s, act) {
 			return true
 		}
 	}
 	return false
 }
-
-func extractJSONObject(s string) string {
-	s = strings.TrimSpace(s)
-	start := strings.IndexByte(s, '{')
-	end := strings.LastIndexByte(s, '}')
-	if start >= 0 && end >= start {
-		return s[start : end+1]
-	}
-	return s
-}
-
-
-
-
