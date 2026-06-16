@@ -1,5 +1,7 @@
 package agent
 
+func isReadOnlyTool(name string) bool { return !highRiskTools[name] && name != "git_commit" }
+
 // Gate（权限门）决定一次工具调用是放行、需确认、还是直接拒绝。
 //
 // 过去这套判断硬编码在 executeToolCall 里（「是高危就 fmt.Scanln 确认」），

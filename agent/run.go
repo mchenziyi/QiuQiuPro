@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"encoding/json"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -221,8 +222,9 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		}
 	}
 
-	result := t.Execute(tc.Function.Arguments)
-	return a.afterToolHooks(hookCtx, result)
+	result, execErr := t.Execute(context.Background(), json.RawMessage(tc.Function.Arguments))
+	if execErr != nil { return execErr.Error() }
+		return a.afterToolHooks(hookCtx, result)
 }
 
 // streamChat 流式调用 LLM，实时输出文本，同时积累 tool call
@@ -326,7 +328,6 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
-
 
 
 

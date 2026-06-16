@@ -61,10 +61,10 @@ func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
 			Name:        fmt.Sprintf("%s_%s", c.Name, mt.Name), // 加前缀，如 "filesystem_read_file"
 			Description: mt.Description,
 			Parameters:  mt.InputSchema, // MCP 的 InputSchema 就是 JSON Schema 格式，直接复用
-			Execute: func(args string) string {
+			Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 				// 解析参数为 map
 				var params map[string]any
-				json.Unmarshal([]byte(args), &params)
+				json.Unmarshal(args, &params)
 
 				// 调用 MCP 工具的 CallTool 方法
 				callReq := mcp.CallToolRequest{}
@@ -72,7 +72,7 @@ func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
 				callReq.Params.Arguments = params
 				resp, err := c.client.CallTool(context.Background(), callReq)
 				if err != nil {
-					return fmt.Sprintf("MCP 工具调用失败：%v", err)
+					return "", fmt.Errorf("MCP failed: %v", err)
 				}
 
 				// 收集返回的文本内容（可能有多个 Content 片段）
@@ -82,7 +82,7 @@ func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
 						parts = append(parts, tc.Text)
 					}
 				}
-				return strings.Join(parts, "\n")
+				return strings.Join(parts, "\n"), nil
 			},
 		}
 		tools = append(tools, t)

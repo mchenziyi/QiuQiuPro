@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"strings"
@@ -30,7 +32,7 @@ func TestSink_DispatchEmitsToolEvents(t *testing.T) {
 	a.Quiet = false // 放行细节事件（工具调用 / 结果）
 	cs := &captureSink{}
 	a.SetSink(cs)
-	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(string) string { return "DATA" }}
+	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "DATA", nil }}
 
 	a.dispatchToolCalls([]openai.ToolCall{tcOf("c0", "read_file")})
 

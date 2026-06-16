@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -34,7 +36,7 @@ func (h *recordingToolHook) AfterToolCall(ctx ToolHookContext, result string) st
 
 func TestToolHook_BeforeAndAfterWrapExecution(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
-	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(string) string { return "RAW" }}
+	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "RAW", nil }}
 	hook := &recordingToolHook{rewrite: "REWRITTEN"}
 	a.RegisterToolHook(hook)
 
@@ -54,9 +56,9 @@ func TestToolHook_BeforeAndAfterWrapExecution(t *testing.T) {
 func TestToolHook_BeforeCanDenyAndPreserveToolResult(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
 	called := false
-	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(string) string {
+	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 		called = true
-		return "RAW"
+		return "RAW", nil
 	}}
 	hook := &recordingToolHook{deny: true, rewrite: "SHOULD_NOT_RUN"}
 	a.RegisterToolHook(hook)
@@ -77,7 +79,7 @@ func TestToolHook_BeforeCanDenyAndPreserveToolResult(t *testing.T) {
 func TestToolHook_RunsBeforeGate(t *testing.T) {
 	a := newDispatchAgent(t, ReadOnlyGate{})
 	hook := &recordingToolHook{deny: true}
-	a.allTools["write_file"] = tool.Tool{Name: "write_file", Execute: func(string) string { return "RAW" }}
+	a.allTools["write_file"] = tool.Tool{Name: "write_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "RAW", nil }}
 	a.RegisterToolHook(hook)
 
 	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{Name: "write_file", Arguments: "{}"}})

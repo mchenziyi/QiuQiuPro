@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"sync/atomic"
 	"testing"
@@ -33,7 +35,7 @@ func tcOf(id, name string) openai.ToolCall {
 func TestDispatchToolCalls_PreservesOrder(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{})
 	mk := func(name string) tool.Tool {
-		return tool.Tool{Name: name, Execute: func(string) string { return "R:" + name }}
+		return tool.Tool{Name: name, Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "R:" + name, nil }}
 	}
 	a.allTools["read_file"] = mk("read_file")   // 只读 → 并发
 	a.allTools["write_file"] = mk("write_file") // 写 → 串行
@@ -70,10 +72,10 @@ func TestDispatchToolCalls_ReadOnlyRunInParallel(t *testing.T) {
 	const n = 4
 	started := make(chan struct{}, n)
 	release := make(chan struct{})
-	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(string) string {
+	a.allTools["read_file"] = tool.Tool{Name: "read_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 		started <- struct{}{} // 报告「我已开始」
 		<-release             // 卡住，直到测试放行
-		return "ok"
+		return "ok", nil
 	}}
 
 	calls := make([]openai.ToolCall, n)
@@ -100,7 +102,7 @@ func TestDispatchToolCalls_ReadOnlyRunInParallel(t *testing.T) {
 func TestDispatchToolCalls_WritesRunSerially(t *testing.T) {
 	a := newDispatchAgent(t, AllowAllGate{}) // 全放行免 stdin；写工具仍应串行
 	var active, maxActive int32
-	a.allTools["write_file"] = tool.Tool{Name: "write_file", Execute: func(string) string {
+	a.allTools["write_file"] = tool.Tool{Name: "write_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 		cur := atomic.AddInt32(&active, 1)
 		for {
 			m := atomic.LoadInt32(&maxActive)
@@ -110,7 +112,7 @@ func TestDispatchToolCalls_WritesRunSerially(t *testing.T) {
 		}
 		time.Sleep(20 * time.Millisecond) // 拉长窗口：若误并发，必被峰值捕获
 		atomic.AddInt32(&active, -1)
-		return "w"
+		return "w", nil
 	}}
 
 	calls := []openai.ToolCall{tcOf("c0", "write_file"), tcOf("c1", "write_file"), tcOf("c2", "write_file")}
@@ -125,7 +127,7 @@ func TestDispatchToolCalls_WritesRunSerially(t *testing.T) {
 func TestCanRunParallel(t *testing.T) {
 	a := newDispatchAgent(t, ConfirmHighRiskGate{})
 	for _, name := range []string{"read_file", "code_search", "write_file", "bash", "git_commit"} {
-		a.allTools[name] = tool.Tool{Name: name, Execute: func(string) string { return "" }}
+		a.allTools[name] = tool.Tool{Name: name, Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "", nil }}
 	}
 
 	cases := []struct {
@@ -154,6 +156,5 @@ func TestCanRunParallel(t *testing.T) {
 		t.Error("只读门下 write_file 应被拒、不可并行")
 	}
 }
-
 
 

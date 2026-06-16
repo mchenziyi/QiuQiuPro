@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -307,9 +308,9 @@ func (a *Agent) NewRememberRuleTool() tool.Tool {
 			},
 			"required": []string{"scope", "kind", "content", "reason"},
 		},
-		Execute: func(args string) string {
+		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			if a.memoryStore == nil {
-				return "长期记忆未启用"
+				return "", fmt.Errorf("memory disabled")
 			}
 			var p struct {
 				Scope   string `json:"scope"`
@@ -318,13 +319,13 @@ func (a *Agent) NewRememberRuleTool() tool.Tool {
 				Reason  string `json:"reason"`
 			}
 			if err := json.Unmarshal([]byte(args), &p); err != nil {
-				return fmt.Sprintf("保存长期记忆失败：参数不是合法 JSON：%v", err)
+				return "", fmt.Errorf("invalid memory JSON: %v", err)
 			}
 			mem, err := a.memoryStore.Add(p.Scope, p.Kind, p.Content, "model")
 			if err != nil {
-				return fmt.Sprintf("保存长期记忆失败：%v", err)
+				return "", fmt.Errorf("memory save failed: %v", err)
 			}
-			return fmt.Sprintf("已保存长期记忆：%s [%s/%s] %s", mem.ID, mem.Scope, mem.Kind, mem.Content)
+			return "", fmt.Errorf("已保存长期记忆：%s [%s/%s] %s", mem.ID, mem.Scope, mem.Kind, mem.Content)
 		},
 	}
 }
