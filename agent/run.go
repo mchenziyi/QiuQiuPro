@@ -26,7 +26,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	usageBefore := a.usage
 	defer func() { a.reportTurnUsage(a.usage.Sub(usageBefore)) }()
 
-	maxLoops := 15
+	maxLoops := 8
 	for i := 0; i < maxLoops; i++ {
 		// 历史超限时先压缩（LLM 摘要旧消息），避免请求超出上下文窗口。
 		a.maybeCompact(ctx)
@@ -283,4 +283,5 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
+
 

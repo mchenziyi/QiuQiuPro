@@ -131,8 +131,17 @@ USER_REQUEST:
 
 const classifyPrompt = `You classify whether a coding-agent user request should first enter read-only planning mode.
 Return ONLY JSON: {"needs_plan":true|false,"reason":"short reason"}.
-Use true for multi-step implementation, refactors, migrations, unclear cross-file work, PRD/spec/issue work, or tasks needing investigation before edits.
-Use false for explanations, simple questions, single obvious edits, direct commands, or requests that should be answered without changing files.`
+
+Use NEEDS_PLAN=true when:
+- The request involves writing, editing, creating, or deleting files
+- The request asks to install, integrate, configure, set up, or wire up something
+- The request involves multiple steps, cross-file changes, or needs investigation before acting
+- You are unsure — it is safer to plan than to skip planning
+
+Use NEEDS_PLAN=false ONLY when:
+- The request is purely a question, explanation, greeting, or chat
+- The request is a single read-only action (just looking at something)
+- You are certain no code changes or system configuration is needed`
 
 // ========== 启发式打分用词库 ==========
 
@@ -186,6 +195,7 @@ func extractJSONObject(s string) string {
 	}
 	return s
 }
+
 
 
 
