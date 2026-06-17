@@ -4,8 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
 	"strings"
+	"time"
 )
 
 func NewReadFileTool() Tool {
@@ -77,7 +84,17 @@ func NewSearchFilesTool() Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{Pattern,Term string}
 			json.Unmarshal(args,&p)
-			return fmt.Sprintf("搜索 %s 中 %q",p.Pattern,p.Term),nil
+			if p.Pattern==""&&p.Term==""{return "",fmt.Errorf("需要 pattern 或 term")}
+var matches []string
+pattern:=p.Pattern
+if pattern==""{pattern="."}
+filepath.Walk(pattern,func(fp string,fi os.FileInfo,err error)error{
+if err!=nil{return nil}
+if p.Term!=""&&strings.Contains(fi.Name(),p.Term){matches=append(matches,fp)}
+return nil
+})
+if len(matches)==0{return "无匹配",nil}
+return fmt.Sprintf("匹配 %d 个文件：\n%s",len(matches),strings.Join(matches,"\n")),nil
 		},
 	}
 }
@@ -89,7 +106,10 @@ func NewGlobTool() Tool {
 			var p struct{Pattern string}
 			json.Unmarshal(args,&p)
 			if p.Pattern==""{return "",fmt.Errorf("pattern required")}
-			return fmt.Sprintf("glob %q",p.Pattern),nil
+			matches,err:=filepath.Glob(p.Pattern)
+if err!=nil{return "",fmt.Errorf("glob: %v",err)}
+if len(matches)==0{return "无匹配",nil}
+return fmt.Sprintf("匹配 %d 个文件：\n%s",len(matches),strings.Join(matches,"\n")),nil
 		},
 	}
 }
@@ -101,7 +121,22 @@ func NewGrepTool() Tool {
 			var p struct{Pattern,Path string}
 			json.Unmarshal(args,&p)
 			if p.Pattern==""{return "",fmt.Errorf("pattern required")}
-			return fmt.Sprintf("grep %q in %s",p.Pattern,p.Path),nil
+			var matches []string
+if p.Path==""{p.Path="."}
+filepath.Walk(p.Path,func(fp string,fi os.FileInfo,err error)error{
+if err!=nil||fi.IsDir()||strings.HasPrefix(fi.Name(),"."){return nil}
+data,err:=os.ReadFile(fp)
+if err!=nil{return nil}
+lines:=strings.Split(string(data),"\n")
+for i,line:=range lines{
+if strings.Contains(line,p.Pattern){
+matches=append(matches,fmt.Sprintf("%s:%d: %s",fp,i+1,strings.TrimSpace(line)))
+}
+}
+return nil
+})
+if len(matches)==0{return "无匹配",nil}
+return fmt.Sprintf("匹配 %d 处：\n%s",len(matches),strings.Join(matches,"\n")),nil
 		},
 	}
 }
@@ -191,11 +226,36 @@ func NewCodeSearchTool() Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{Symbol,Path string}
 			json.Unmarshal(args,&p)
-			return fmt.Sprintf("搜索符号 %s",p.Symbol),nil
+			var matches []string
+searchDir:=p.Path
+if searchDir==""{searchDir="."}
+filepath.Walk(searchDir,func(fp string,fi os.FileInfo,err error)error{
+if err!=nil||fi.IsDir()||!strings.HasSuffix(fp,".go"){return nil}
+data,err:=os.ReadFile(fp)
+if err!=nil{return nil}
+lines:=strings.Split(string(data),"\n")
+for i,line:=range lines{
+if strings.Contains(line,p.Symbol){
+matches=append(matches,fmt.Sprintf("%s:%d: %s",fp,i+1,strings.TrimSpace(line)))
+}
+}
+return nil
+})
+if len(matches)==0{return fmt.Sprintf("未找到符号 %s",p.Symbol),nil}
+return fmt.Sprintf("找到 %d 处 %s：\n%s",len(matches),p.Symbol,strings.Join(matches,"\n")),nil
 		},
 	}
 }
 
+
+func stripHTML(s string) string {
+s=regexp.MustCompile("(?is)<(?:script|style)[^>]*>.*?</(?:script|style)>").ReplaceAllString(s,"")
+s=regexp.MustCompile("(?is)<!--.*?-->").ReplaceAllString(s,"")
+s=regexp.MustCompile("(?is)<[^>]+>").ReplaceAllString(s,"")
+repl:=strings.NewReplacer("&amp;","&","&lt;","<","&gt;",">","&quot;","\"","&#39;","'","&nbsp;"," ")
+s=repl.Replace(s)
+return regexp.MustCompile("\n[ \\t]*\\n([ \\t]*\\n)+").ReplaceAllString(s,"\n\n")
+}
 func NewWebFetchTool() Tool {
 	return Tool{Name:"web_fetch",Description:"HTTP GET 抓取 URL",ReadOnly:true,
 		Parameters: map[string]any{"type":"object","properties":map[string]any{"url":map[string]any{"type":"string"}},"required":[]string{"url"}},
@@ -203,7 +263,21 @@ func NewWebFetchTool() Tool {
 			var p struct{URL string}
 			json.Unmarshal(args,&p)
 			if p.URL==""{return "",fmt.Errorf("url required")}
-			return fmt.Sprintf("fetching %s...",p.URL),nil
+			client:=&http.Client{Timeout:15*time.Second}
+req,err:=http.NewRequestWithContext(ctx,"GET",p.URL,nil)
+if err!=nil{return "",fmt.Errorf("request: %v",err)}
+req.Header.Set("User-Agent","QiuQiuPro/1.0")
+resp,err:=client.Do(req)
+if err!=nil{return "",fmt.Errorf("fetch: %v",err)}
+defer resp.Body.Close()
+body,err:=io.ReadAll(io.LimitReader(resp.Body,1<<20))
+if err!=nil{return "",fmt.Errorf("read: %v",err)}
+out:=string(body)
+if strings.Contains(strings.ToLower(resp.Header.Get("Content-Type")),"text/html")||strings.Contains(out,"<!doctype")||strings.Contains(out,"<html"){
+out=stripHTML(out)
+}
+if len(out)>16000{out=out[:16000]+"\n...(truncated)"}
+return fmt.Sprintf("HTTP %s\n%s",resp.Status,strings.TrimSpace(out)),nil
 		},
 	}
 }
@@ -214,18 +288,38 @@ func NewGitCommitTool() Tool {
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{Message string}
 			json.Unmarshal(args,&p)
-			return fmt.Sprintf("git commit: %s",p.Message),nil
+			cmd:=exec.CommandContext(ctx,"git","add","-A")
+if out,err:=cmd.CombinedOutput();err!=nil{return fmt.Sprintf("git add failed: %s",out),err}
+cmd=exec.CommandContext(ctx,"git","commit","-m",p.Message)
+out,err:=cmd.CombinedOutput()
+if err!=nil{return fmt.Sprintf("git commit failed: %s",out),err}
+return strings.TrimSpace(string(out)),nil
 		},
 	}
 }
 
 func NewRunShellTool() Tool {
-	return Tool{Name:"bash",Description:"执行 Shell 命令",ReadOnly:false,
-		Parameters: map[string]any{"type":"object","properties":map[string]any{"command":map[string]any{"type":"string"}},"required":[]string{"command"}},
+	return Tool{Name:"bash",Description:"执行 Shell 命令（PowerShell），返回 stdout+stderr。最大输出 32KB，超时 60s。",ReadOnly:false,
+		Parameters: map[string]any{"type":"object","properties":map[string]any{"command":map[string]any{"type":"string","description":"要执行的命令"}},"required":[]string{"command"}},
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{Command string}
 			json.Unmarshal(args,&p)
-			return fmt.Sprintf("running: %s",p.Command),nil
+			if p.Command==""{return "",fmt.Errorf("command required")}
+			var cmd *exec.Cmd
+if runtime.GOOS=="windows"{
+	cmd=exec.CommandContext(ctx,"C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe","-NoProfile","-Command",p.Command)
+}else{
+	cmd=exec.CommandContext(ctx,"/bin/sh","-c",p.Command)
+}
+			out,err:=cmd.CombinedOutput()
+			if err!=nil{
+				outStr:=strings.TrimSpace(string(out))
+				if outStr!=""{return outStr,err}
+				return "",fmt.Errorf("command failed: %v",err)
+			}
+			output:=string(out)
+			if len(output)>32000{output=output[:32000]+"\n...(截断)"}
+			return strings.TrimSpace(output),nil
 		},
 	}
 }
