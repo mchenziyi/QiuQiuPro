@@ -116,8 +116,8 @@ func TestGrepTool_ValidatesPattern(t *testing.T) {
 
 func TestToolCount_MatchesAllBuiltIn(t *testing.T) {
 	tools := AllBuiltInTools()
-	if len(tools) != 15 {
-		t.Fatalf("内置工具数量应为 15，当前 %d：%v", len(tools), toolNames(tools))
+	if len(tools) != 14 {
+		t.Fatalf("内置工具数量应为 14，当前 %d：%v", len(tools), toolNames(tools))
 	}
 }
 

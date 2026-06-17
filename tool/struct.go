@@ -17,7 +17,7 @@ func AllBuiltInTools() []Tool {
 	return []Tool{
 		NewReadFileTool(), NewWriteFileTool(), NewListDirectoryTool(),
 		NewEditFileTool(), NewMultiEditTool(),
-		NewDeleteRangeTool(), NewDeleteSymbolTool(),
+		NewDeleteRangeTool(),
 		NewTodoWriteTool(),
 		NewSearchFilesTool(), NewGlobTool(), NewGrepTool(),
 		NewCodeSearchTool(), NewWebFetchTool(),
