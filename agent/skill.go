@@ -8,6 +8,7 @@ import "agentdemo/skill"
 func (a *Agent) ApplySkill(s skill.Skill) {
 	a.currentSkill = &s
 	a.sysPrompt = s.SystemPrompt
+	a.composeCachedSystemPrompt()
 	if len(s.ToolWhitelist) > 0 {
 		a.activeTools = make([]string, 0)
 		for _, name := range s.ToolWhitelist {

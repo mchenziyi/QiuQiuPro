@@ -116,6 +116,16 @@ func (u TokenUsage) FormatSession(p Pricing) string {
 	return s
 }
 
+// FormatSessionWithCache 在 FormatSession 基础上附加会话级前缀缓存统计。
+func (a *Agent) FormatSessionWithCache() string {
+	s := a.usage.FormatSession(a.pricing)
+	hit, miss := a.SessionCacheStats()
+	if hit+miss > 0 {
+		s += fmt.Sprintf("\n   前缀缓存累计命中 %d / 未命中 %d（%.1f%%）", hit, miss, a.sessionHitRate()*100)
+	}
+	return s
+}
+
 // ----- Agent 侧的用量记账 -----
 
 // accountUsage 把一次 LLM 调用的真实用量计入会话累计。
@@ -130,12 +140,18 @@ func (a *Agent) Usage() TokenUsage { return a.usage }
 func (a *Agent) SetPricing(p Pricing) { a.pricing = p }
 
 // ReportUsage 把会话累计用量（含费用，若已配置单价）输出到 Sink，供 /usage 命令使用。
-func (a *Agent) ReportUsage() { a.noticef("%s\n", a.usage.FormatSession(a.pricing)) }
+func (a *Agent) ReportUsage() { a.noticef("%s\n", a.FormatSessionWithCache()) }
 
 // reportTurnUsage 在一轮 Run 结束后输出该轮新增用量（细节日志，安静模式隐藏）。
 func (a *Agent) reportTurnUsage(turn TokenUsage) {
 	if turn.Calls <= 0 {
-		return // 本轮没有真实用量遥测（如未联网 / provider 未回传），不输出空行
+		return
 	}
-	a.emit(Event{Kind: EventNotice, Text: fmt.Sprintf("  📊 本轮 token｜%s\n", turn.FormatCompact()), Verbose: true})
+	hit, miss := a.SessionCacheStats()
+	sessRate := 0.0
+	if hit+miss > 0 {
+		sessRate = float64(hit) / float64(hit+miss) * 100
+	}
+	a.emit(Event{Kind: EventNotice, Text: fmt.Sprintf("  📊 本轮 token｜%s｜会话缓存 %.1f%%\n",
+		turn.FormatCompact(), sessRate), Verbose: true})
 }

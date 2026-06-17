@@ -255,18 +255,16 @@ func sortMemories(memories []Memory) {
 	})
 }
 
-func (a *Agent) SetMemoryStore(store *MemoryStore) { a.memoryStore = store }
+func (a *Agent) SetMemoryStore(store *MemoryStore) {
+	a.memoryStore = store
+	a.composeCachedSystemPrompt()
+}
 
 func (a *Agent) BuildSystemPrompt() string {
-	base := a.sysPrompt
-	if a.memoryStore == nil {
-		return base
+	if a.cachedSystemPrompt == "" {
+		a.composeCachedSystemPrompt()
 	}
-	block, err := a.memoryStore.RenderPromptBlock()
-	if err != nil || block == "" {
-		return base
-	}
-	return strings.TrimRight(base, "\n") + "\n\n" + block
+	return a.cachedSystemPrompt
 }
 
 func (a *Agent) MemoryList() string {
@@ -291,6 +289,7 @@ func (a *Agent) ForgetMemory(id string) string {
 	if !ok {
 		return fmt.Sprintf("未找到长期记忆：%s", id)
 	}
+	a.queueMemoryNote(fmt.Sprintf("Deleted memory %q — disregard until next session", id))
 	return fmt.Sprintf("已删除长期记忆：%s", id)
 }
 
@@ -325,7 +324,8 @@ func (a *Agent) NewRememberRuleTool() tool.Tool {
 			if err != nil {
 				return "", fmt.Errorf("memory save failed: %v", err)
 			}
-			return "", fmt.Errorf("已保存长期记忆：%s [%s/%s] %s", mem.ID, mem.Scope, mem.Kind, mem.Content)
+			a.queueMemoryNote(fmt.Sprintf("Saved memory %q [%s/%s]: %s", mem.ID, mem.Scope, mem.Kind, mem.Content))
+			return fmt.Sprintf("已保存长期记忆：%s [%s/%s] %s", mem.ID, mem.Scope, mem.Kind, mem.Content), nil
 		},
 	}
 }

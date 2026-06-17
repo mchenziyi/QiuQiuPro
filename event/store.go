@@ -6,9 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
+
+const currentSessionFile = ".current"
 
 // Event 表示 Agent 的一步操作
 // 一旦写入就不可修改（追加写入，不改已有行）
@@ -110,7 +113,67 @@ func (s *Store) SaveCheckpoint(sessionID, lastEventID, messagesJSON string) erro
 	}
 	path := fmt.Sprintf("%s/%s.ckpt", s.dir, sessionID)
 	data, _ := json.Marshal(cp)
-	return os.WriteFile(path, data, 0644)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return err
+	}
+	return s.PinCurrentSession(sessionID)
+}
+
+// PinCurrentSession 记录当前活跃 session，供下次启动恢复（对齐 Reasonix 的 sessionPath 固定）。
+func (s *Store) PinCurrentSession(sessionID string) error {
+	if sessionID == "" {
+		return nil
+	}
+	path := filepath.Join(s.dir, currentSessionFile)
+	return os.WriteFile(path, []byte(sessionID), 0644)
+}
+
+// ResolveSessionID 决定本次启动应使用的 session ID。
+// 优先读 .current；无效时回退到磁盘上最新的 .ckpt（等价 Reasonix --continue 选最近会话）。
+func (s *Store) ResolveSessionID() string {
+	if id := strings.TrimSpace(s.readCurrentSession()); id != "" {
+		if cp, err := s.LoadCheckpoint(id); err == nil && cp != nil {
+			return id
+		}
+	}
+	if id, ok := s.latestCheckpointSessionID(); ok {
+		return id
+	}
+	return ""
+}
+
+func (s *Store) readCurrentSession() string {
+	data, err := os.ReadFile(filepath.Join(s.dir, currentSessionFile))
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+func (s *Store) latestCheckpointSessionID() (string, bool) {
+	entries, err := os.ReadDir(s.dir)
+	if err != nil {
+		return "", false
+	}
+	var (
+		bestID string
+		bestAt time.Time
+	)
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".ckpt" {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		at := info.ModTime()
+		if bestID == "" || at.After(bestAt) {
+			bestID = strings.TrimSuffix(e.Name(), ".ckpt")
+			bestAt = at
+		}
+	}
+	return bestID, bestID != ""
 }
 
 // LoadCheckpoint 读取最新的状态快照

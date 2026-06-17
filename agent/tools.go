@@ -3,6 +3,7 @@ package agent
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -47,19 +48,21 @@ func (a *Agent) availableTools() []tool.Tool {
 }
 
 func (a *Agent) toolDefinitions() []openai.Tool {
-	var tools []openai.Tool
-	for _, t := range a.availableTools() {
+	tools := a.availableTools()
+	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })
+	var out []openai.Tool
+	for _, t := range tools {
 		data, _ := json.Marshal(t.Parameters)
 		var params map[string]any
 		json.Unmarshal(data, &params)
-		tools = append(tools, openai.Tool{
+		out = append(out, openai.Tool{
 			Type: "function",
 			Function: &openai.FunctionDefinition{
 				Name: t.Name, Description: t.Description, Parameters: params,
 			},
 		})
 	}
-	return tools
+	return out
 }
 
 // isReadOnlyTool 从工具的 ReadOnly 字段判断是否为只读/无副作用工具。

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNewStore_CreatesDir(t *testing.T) {
@@ -136,6 +137,33 @@ func TestSaveAndLoadCheckpoint(t *testing.T) {
 	}
 	if cp.SessionID != "sess-cp" {
 		t.Fatalf("SessionID 应为 sess-cp，实际 %q", cp.SessionID)
+	}
+}
+
+func TestResolveSessionID_PrefersCurrentThenLatest(t *testing.T) {
+	dir := t.TempDir()
+	s := NewStore(dir)
+
+	if id := s.ResolveSessionID(); id != "" {
+		t.Fatalf("空目录应返回空 ID，实际 %q", id)
+	}
+
+	if err := s.SaveCheckpoint("sess-a", "e1", `[]`); err != nil {
+		t.Fatalf("SaveCheckpoint sess-a: %v", err)
+	}
+	time.Sleep(10 * time.Millisecond)
+	if err := s.SaveCheckpoint("sess-b", "e2", `[]`); err != nil {
+		t.Fatalf("SaveCheckpoint sess-b: %v", err)
+	}
+	if id := s.ResolveSessionID(); id != "sess-b" {
+		t.Fatalf("应选最新 checkpoint sess-b，实际 %q", id)
+	}
+
+	if err := s.PinCurrentSession("sess-a"); err != nil {
+		t.Fatalf("PinCurrentSession: %v", err)
+	}
+	if id := s.ResolveSessionID(); id != "sess-a" {
+		t.Fatalf(".current 有效时应优先 sess-a，实际 %q", id)
 	}
 }
 

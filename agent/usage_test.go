@@ -166,10 +166,11 @@ func TestStreamChat_AccountsUsage(t *testing.T) {
 	a := newSSEAgent(t, srv)
 	a.Quiet = true
 
-	msg, err := a.streamChat(context.Background(), a.session.BuildRequest(""))
+	msg, usage, err := a.streamChat(context.Background(), a.session.BuildRequest(""))
 	if err != nil {
 		t.Fatalf("streamChat 报错：%v", err)
 	}
+	_ = usage
 	if msg.Content != "你好世界" {
 		t.Fatalf("内容拼接错误：%q", msg.Content)
 	}

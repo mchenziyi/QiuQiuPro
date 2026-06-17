@@ -12,9 +12,10 @@ import (
 // 在 BuildRequest 时前置），这样历史保持为纯对话，便于裁剪与持久化。
 // 把这些从 Agent 里拆出来，让「消息日志怎么攒、怎么裁、怎么存档」聚到一处。
 type Session struct {
-	ID          string
-	messages    []openai.ChatCompletionMessage
-	maxMessages int
+	ID                string
+	messages          []openai.ChatCompletionMessage
+	maxMessages       int
+	logRewriteVersion int // 历史被 prune/compact 改写时递增，供前缀缓存诊断
 }
 
 // NewSession 新建一个空会话。
@@ -140,3 +141,14 @@ func (s *Session) Restore(messagesJSON string) error {
 	s.messages = msgs
 	return nil
 }
+
+// Replace 用新历史整体替换（prune / compact 使用）。
+func (s *Session) Replace(msgs []openai.ChatCompletionMessage) {
+	s.messages = append([]openai.ChatCompletionMessage(nil), msgs...)
+}
+
+// RewriteVersion 返回历史改写代数（prune/compact 会递增）。
+func (s *Session) RewriteVersion() int { return s.logRewriteVersion }
+
+// IncrementRewrite 在历史被 prune/compact 改写后调用。
+func (s *Session) IncrementRewrite() { s.logRewriteVersion++ }

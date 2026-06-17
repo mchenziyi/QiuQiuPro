@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,6 +114,45 @@ func TestGrepTool_SkipsHiddenDirs(t *testing.T) {
 	if !strings.Contains(out, "visible.go") {
 		t.Fatalf("grep missed visible file: %s", out)
 	}
+}
+
+func TestGitCommitTool_NoChanges(t *testing.T) {
+	dir := t.TempDir()
+	initGitRepo(t, dir)
+
+	out, err := NewGitCommitTool().Execute(context.Background(), json.RawMessage(`{"message":"noop"}`))
+	if err == nil {
+		t.Fatal("无变更提交应失败")
+	}
+	if !strings.Contains(out, "nothing to commit") && !strings.Contains(out, "working tree clean") {
+		t.Fatalf("out=%q err=%v", out, err)
+	}
+}
+
+func initGitRepo(t *testing.T, dir string) {
+	t.Helper()
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("f.txt", "x")
+	run := func(args ...string) {
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %s", err, out)
+		}
+	}
+	run("git", "init")
+	run("git", "add", "f.txt")
+	run("git", "commit", "-m", "init")
+	// git_commit runs in process cwd; test runs from package dir — use chdir only for this test.
+	cwd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(cwd) })
 }
 
 func TestAllBuiltInTools_HaveNonEmptyName(t *testing.T) {

@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -15,6 +15,7 @@ import (
 
 // Run 处理一轮用户输入——Agent 核心循环（无硬上限，由风暴检测兜底）
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
+	userInput = a.composeUserTurn(userInput)
 	a.recordEvent("user", userInput, "")
 
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: userInput})
@@ -27,11 +28,27 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.stormCount = 0
 
 	for {
-		a.maybeCompact(ctx)
-		msg, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
+		prevShape := a.lastPrefixShape
+		if !a.haveLastPrefixShape {
+			prevShape = a.capturePrefixShape()
+		}
+		curShape := a.capturePrefixShape()
+
+		msg, usage, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
+		}
+
+		diag := CompareShape(prevShape, curShape, usage)
+		a.lastPrefixShape = curShape
+		a.haveLastPrefixShape = true
+		if usage.PromptTokens > 0 {
+			a.accumulateSessionCache(usage)
+			if note := formatCacheDiagnostics(diag); note != "" {
+				a.debugf("  ⚡ 前缀缓存｜%s｜会话累计 %.1f%%\n", note, a.sessionHitRate()*100)
+			}
+			a.maybeCompact(ctx, usage)
 		}
 
 		if msg.Content != "" {
@@ -240,8 +257,8 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 	return a.afterToolHooks(hookCtx, result)
 }
 
-// streamChat 流式调用 LLM，实时输出文本，同时积累 tool call
-func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, error) {
+// streamChat 流式调用 LLM，实时输出文本，同时积累 tool call。
+func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, openai.Usage, error) {
 	stream, err := a.client.CreateChatCompletionStream(ctx,
 		openai.ChatCompletionRequest{
 			Model:           a.model,
@@ -252,7 +269,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		},
 	)
 	if err != nil {
-		return openai.ChatCompletionMessage{}, err
+		return openai.ChatCompletionMessage{}, openai.Usage{}, err
 	}
 	defer stream.Close()
 
@@ -266,7 +283,7 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 			break
 		}
 		if err != nil {
-			return openai.ChatCompletionMessage{}, err
+			return openai.ChatCompletionMessage{}, openai.Usage{}, err
 		}
 
 		if resp.Usage != nil && resp.Usage.PromptTokens > 0 {
@@ -339,5 +356,5 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 		}
 	}
 
-	return msg, nil
+	return msg, usage, nil
 }

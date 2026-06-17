@@ -133,7 +133,7 @@ func TestMaybeCompact_SummarizesOverTrigger(t *testing.T) {
 		return "FAKE_SUMMARY", nil
 	}
 
-	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 900})
 
 	if !called {
 		t.Fatal("提示越过触发线应调用摘要器")
@@ -163,8 +163,8 @@ func TestMaybeCompact_SoftNoticeNoCompaction(t *testing.T) {
 		return "", nil
 	}
 
-	a.maybeCompact(context.Background())
-	a.maybeCompact(context.Background()) // 再次：提醒只应出现一次
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 600})
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 600}) // 再次：提醒只应出现一次
 
 	if a.session.Len() != 4 {
 		t.Fatalf("软线区间历史应不变，实际 %d", a.session.Len())
@@ -192,7 +192,7 @@ func TestMaybeCompact_FallsBackToTrimOnError(t *testing.T) {
 		return "", errors.New("boom")
 	}
 
-	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 900})
 
 	if a.session.Len() > a.session.maxMessages {
 		t.Fatalf("退化裁剪后不应超过上限，实际 %d", a.session.Len())
@@ -216,7 +216,7 @@ func TestMaybeCompact_NoopUnderTrigger(t *testing.T) {
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: "hi"})
 	a.lastPromptTokens = 100 // < soft(500)
 
-	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 100})
 
 	if a.session.Len() != 1 {
 		t.Fatalf("未达阈值历史应不变，实际 %d", a.session.Len())
@@ -234,7 +234,7 @@ func TestMaybeCompact_NoUsageNoop(t *testing.T) {
 	}
 	addMsgs(a.session, 50, 100) // 条数很多，但没有 token 遥测
 
-	a.maybeCompact(context.Background())
+	a.maybeCompact(context.Background(), openai.Usage{})
 
 	if a.session.Len() != 50 {
 		t.Fatalf("无用量遥测应不压缩，实际 %d", a.session.Len())

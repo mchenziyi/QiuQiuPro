@@ -82,6 +82,9 @@ func loadMCPConfigs() []MCPConfig {
 }
 
 func main() {
+	var continueSession bool
+	flag.BoolVar(&continueSession, "c", false, "恢复最近一次会话")
+	flag.BoolVar(&continueSession, "continue", false, "恢复最近一次会话（同 -c）")
 	quiet := flag.Bool("q", false, "安静模式，减少中间日志")
 	flag.Parse()
 
@@ -95,7 +98,15 @@ func main() {
 	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL")); v != "" {
 		model = v
 	}
-	a := agent.New(apiKey, model)
+	a, err := agent.New(apiKey, model, continueSession)
+	if err != nil {
+		if errors.Is(err, agent.ErrNoSessionToResume) {
+			fmt.Println("❌ 没有可恢复的会话（先正常对话一轮，或不要加 -c/--continue）")
+		} else {
+			fmt.Printf("❌ 启动失败：%v\n", err)
+		}
+		os.Exit(1)
+	}
 	a.SetInput(stdin)
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.RegisterTool(a.NewRememberRuleTool())
