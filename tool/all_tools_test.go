@@ -3,8 +3,117 @@ package tool
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestEditFileTool_UniqueReplace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "edit.txt")
+	os.WriteFile(path, []byte("hello world"), 0644)
+
+	_, err := NewEditFileTool().Execute(context.Background(), json.RawMessage(
+		`{"path":"`+path+`","old_string":"world","new_string":"qiuqiu"}`,
+	))
+	if err != nil {
+		t.Fatalf("edit_file: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if got := strings.TrimSpace(string(data)); got != "hello qiuqiu" {
+		t.Fatalf("content = %q, want hello qiuqiu", got)
+	}
+}
+
+func TestMultiEditTool_BatchReplace(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "multi.txt")
+	os.WriteFile(path, []byte("one two three"), 0644)
+
+	_, err := NewMultiEditTool().Execute(context.Background(), json.RawMessage(
+		`{"path":"`+path+`","edits":[{"old_string":"one","new_string":"1"},{"old_string":"two","new_string":"2"},{"old_string":"three","new_string":"3"}]}`,
+	))
+	if err != nil {
+		t.Fatalf("multi_edit: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if got := strings.TrimSpace(string(data)); got != "1 2 3" {
+		t.Fatalf("content = %q, want 1 2 3", got)
+	}
+}
+
+func TestMultiEditTool_ReplaceAll(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "multi.txt")
+	os.WriteFile(path, []byte("aa bb aa"), 0644)
+
+	_, err := NewMultiEditTool().Execute(context.Background(), json.RawMessage(
+		`{"path":"`+path+`","edits":[{"old_string":"aa","new_string":"x","replace_all":true}]}`,
+	))
+	if err != nil {
+		t.Fatalf("multi_edit replace_all: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if got := strings.TrimSpace(string(data)); got != "x bb x" {
+		t.Fatalf("content = %q, want x bb x", got)
+	}
+}
+
+func TestDeleteRangeTool_Inclusive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "del.txt")
+	os.WriteFile(path, []byte("line1\nstart\nmid\nend\nline5"), 0644)
+
+	_, err := NewDeleteRangeTool().Execute(context.Background(), json.RawMessage(
+		`{"path":"`+path+`","start_anchor":"start","end_anchor":"end","inclusive":true}`,
+	))
+	if err != nil {
+		t.Fatalf("delete_range inclusive: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if got := strings.TrimSpace(string(data)); got != "line1\nline5" {
+		t.Fatalf("content = %q, want line1\\nline5", strings.ReplaceAll(string(data), "\n", `\n`))
+	}
+}
+
+func TestDeleteRangeTool_Exclusive(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "del.txt")
+	os.WriteFile(path, []byte("line1\nstart\nmid\nend\nline5"), 0644)
+
+	_, err := NewDeleteRangeTool().Execute(context.Background(), json.RawMessage(
+		`{"path":"`+path+`","start_anchor":"start","end_anchor":"end","inclusive":false}`,
+	))
+	if err != nil {
+		t.Fatalf("delete_range exclusive: %v", err)
+	}
+	data, _ := os.ReadFile(path)
+	if got := strings.TrimSpace(string(data)); got != "line1\nstart\nend\nline5" {
+		t.Fatalf("content = %q, want line1\\nstart\\nend\\nline5", strings.ReplaceAll(string(data), "\n", `\n`))
+	}
+}
+
+func TestGrepTool_SkipsHiddenDirs(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "visible.go"), []byte("func SetPlanMode() {}"), 0644)
+	hiddenDir := filepath.Join(dir, ".reasonix", "sessions")
+	os.MkdirAll(hiddenDir, 0755)
+	os.WriteFile(filepath.Join(hiddenDir, "hidden.txt"), []byte("func SetPlanMode() {}"), 0644)
+
+	out, err := NewGrepTool().Execute(context.Background(), json.RawMessage(
+		`{"pattern":"SetPlanMode","path":"`+dir+`"}`,
+	))
+	if err != nil {
+		t.Fatalf("grep: %v", err)
+	}
+	if strings.Contains(out, ".reasonix") {
+		t.Fatalf("grep scanned hidden dir: %s", out)
+	}
+	if !strings.Contains(out, "visible.go") {
+		t.Fatalf("grep missed visible file: %s", out)
+	}
+}
 
 func TestAllBuiltInTools_HaveNonEmptyName(t *testing.T) {
 	tools := AllBuiltInTools()

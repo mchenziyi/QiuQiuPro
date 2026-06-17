@@ -103,7 +103,11 @@ func NewEditFileTool() Tool {
 			prop("new_string", "string", ""),
 		).Required("path", "old_string", "new_string"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
-			var p struct{ Path string `json:"path"`; OldString string `json:"old_string"`; NewString string `json:"new_string"` }
+			var p struct {
+				Path      string `json:"path"`
+				OldString string `json:"old_string"`
+				NewString string `json:"new_string"`
+			}
 			json.Unmarshal(args, &p)
 			b, err := os.ReadFile(p.Path)
 			if err != nil {
@@ -149,11 +153,12 @@ func NewMultiEditTool() Tool {
 		},
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct {
-				Path  string
+				Path  string `json:"path"`
 				Edits []struct {
-					OldString, NewString string
-					ReplaceAll           bool
-				}
+					OldString  string `json:"old_string"`
+					NewString  string `json:"new_string"`
+					ReplaceAll bool   `json:"replace_all"`
+				} `json:"edits"`
 			}
 			json.Unmarshal(args, &p)
 			b, err := os.ReadFile(p.Path)
@@ -194,8 +199,10 @@ func NewDeleteRangeTool() Tool {
 		).Required("path", "start_anchor", "end_anchor"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct {
-				Path, StartAnchor, EndAnchor string
-				Inclusive                    *bool
+				Path        string `json:"path"`
+				StartAnchor string `json:"start_anchor"`
+				EndAnchor   string `json:"end_anchor"`
+				Inclusive   *bool  `json:"inclusive"`
 			}
 			json.Unmarshal(args, &p)
 			inc := true
@@ -371,7 +378,16 @@ func NewGrepTool() Tool {
 			}
 			var matches []string
 			filepath.Walk(root, func(fp string, fi os.FileInfo, walkErr error) error {
-				if walkErr != nil || fi.IsDir() || strings.HasPrefix(fi.Name(), ".") {
+				if walkErr != nil {
+					return nil
+				}
+				if fi.IsDir() {
+					if strings.HasPrefix(fi.Name(), ".") && fi.Name() != "." {
+						return filepath.SkipDir
+					}
+					return nil
+				}
+				if strings.HasPrefix(fi.Name(), ".") {
 					return nil
 				}
 				data, err := os.ReadFile(fp)
