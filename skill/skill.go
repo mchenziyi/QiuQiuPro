@@ -1,4 +1,4 @@
-﻿// Package skill 定义 Agent 的专业能力包
+// Package skill 定义 Agent 的专业能力包
 package skill
 
 import (
@@ -11,11 +11,11 @@ import (
 
 // Skill 定义 Agent 的一种专业行为模式
 type Skill struct {
-	Name         string   `json:"name"`          // 技能名
-	Description  string   `json:"description"`    // 一句话说明
-	SystemPrompt string   `json:"system_prompt"`  // 专业提示词
+	Name          string   `json:"name"`           // 技能名
+	Description   string   `json:"description"`    // 一句话说明
+	SystemPrompt  string   `json:"system_prompt"`  // 专业提示词
 	ToolWhitelist []string `json:"tool_whitelist"` // 可用工具名列表（空=全部）
-	Rules        []Rule   `json:"rules"`          // 行为规则
+	Rules         []Rule   `json:"rules"`          // 行为规则
 }
 
 // Rule 定义一条行为规则
@@ -71,5 +71,3 @@ func LoadFromDir(dir string) ([]Skill, error) {
 func LoadFromURL(url string) (*Skill, error) {
 	return nil, fmt.Errorf("从 URL 加载 Skill 暂未实现，请先下载到 %s", url)
 }
-
-

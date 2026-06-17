@@ -68,7 +68,7 @@ func (a *Agent) GeneratePlan(ctx context.Context, goal string) (*Plan, error) {
 	if err != nil {
 		return nil, fmt.Errorf("规划失败：%w", err)
 	}
-	a.accountUsage(resp.Usage) // 规划也耗 token，计入会话累计（TODO #14）
+	a.accountUsage(resp.Usage)
 
 	content := stripCodeFence(resp.Choices[0].Message.Content)
 

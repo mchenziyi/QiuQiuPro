@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -97,7 +98,7 @@ func TestRememberRuleTool_ModelWritesPreference(t *testing.T) {
 	a.SetMemoryStore(store)
 	a.RegisterTool(a.NewRememberRuleTool())
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{
 		Name:      memoryToolName,
 		Arguments: `{"scope":"global","kind":"preference","content":"以后默认用中文回答","reason":"用户表达了长期偏好"}`,
 	}})
@@ -119,7 +120,7 @@ func TestRememberRuleTool_RejectsKnowledge(t *testing.T) {
 	a.SetMemoryStore(store)
 	a.RegisterTool(a.NewRememberRuleTool())
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{
 		Name:      memoryToolName,
 		Arguments: `{"scope":"project","kind":"knowledge","content":"某函数在 run.go","reason":"项目知识"}`,
 	}})
@@ -134,7 +135,7 @@ func TestRememberRuleTool_DeniedInReadOnlyMode(t *testing.T) {
 	a.SetMemoryStore(store)
 	a.RegisterTool(a.NewRememberRuleTool())
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{
 		Name:      memoryToolName,
 		Arguments: `{"scope":"global","kind":"preference","content":"以后默认用中文回答","reason":"用户表达了长期偏好"}`,
 	}})

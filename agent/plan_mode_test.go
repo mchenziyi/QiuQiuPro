@@ -47,7 +47,7 @@ func TestPlanMode_BlocksWriteTools(t *testing.T) {
 	a.SetPlanMode(true)
 
 	// Read tool should succeed
-	result := a.executeToolCall(openai.ToolCall{
+	result := a.executeToolCall(context.Background(), openai.ToolCall{
 		Function: openai.FunctionCall{Name: "read_file", Arguments: `{"path":"t.txt"}`},
 	})
 	if readRec.called != 1 {
@@ -58,7 +58,7 @@ func TestPlanMode_BlocksWriteTools(t *testing.T) {
 	}
 
 	// Write tool should be blocked
-	result = a.executeToolCall(openai.ToolCall{
+	result = a.executeToolCall(context.Background(), openai.ToolCall{
 		Function: openai.FunctionCall{Name: "write_file", Arguments: `{"path":"t.txt","content":"x"}`},
 	})
 	if writeRec.called != 0 {
@@ -83,7 +83,7 @@ func TestPlanMode_Off_AllowsWrites(t *testing.T) {
 
 	a.SetPlanMode(false)
 
-	result := a.executeToolCall(openai.ToolCall{
+	result := a.executeToolCall(context.Background(), openai.ToolCall{
 		Function: openai.FunctionCall{Name: "write_file", Arguments: `{"path":"t.txt","content":"x"}`},
 	})
 	if writeRec.called != 1 {

@@ -23,8 +23,8 @@ func TestAppendAndLoad(t *testing.T) {
 	s := NewStore(dir)
 
 	e := Event{
-		ID:    "evt-1",
-		Type:  "user",
+		ID:      "evt-1",
+		Type:    "user",
 		Content: "你好",
 	}
 	if err := s.Append("sess-1", e); err != nil {

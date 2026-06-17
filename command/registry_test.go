@@ -81,8 +81,6 @@ func TestHandle_CommandWithoutArgs(t *testing.T) {
 	}
 }
 
-
-
 func TestHandle_NonCommand(t *testing.T) {
 	r := NewRegistry()
 	// 不以 / 开头的输入应返回 false

@@ -4,8 +4,8 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"time"
 	"sync/atomic"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -36,8 +36,8 @@ type Agent struct {
 	sysPrompt       string
 	cmdRegistry     *command.Registry
 	lastEventID     string
-	Quiet           bool   // true 时隐藏中间日志
-	Mode            string // 运行模式："plan"（规划执行）| "ask"（直接问答）
+	Quiet           bool        // true 时隐藏中间日志
+	Mode            string      // 运行模式："plan"（规划执行）| "ask"（直接问答）
 	planMode        atomic.Bool // true=只读调研模式，写工具被拒绝
 	toolCallCount   int
 	in              *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
@@ -46,22 +46,22 @@ type Agent struct {
 	summarizer      summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
 	reasoningEffort string        // DeepSeek V4 思考强度："max"（默认）/ "high"；thinking 关闭时被忽略
 
-	// 上下文压缩（TODO #13）：按「占模型窗口的比例」触发，靠真实用量驱动，对前缀缓存友好。
+	// 上下文压缩：按「占模型窗口的比例」触发，靠真实用量驱动，对前缀缓存友好。
 	contextWindow      int     // 模型上下文窗口（token）；<=0 关闭自动压缩
 	compactRatio       float64 // 提示达到窗口该比例时触发压缩
 	softCompactRatio   float64 // 达到该比例时提醒一次（不压缩）
 	lastPromptTokens   int     // 上一轮 LLM 调用的真实 prompt_tokens（provider 回传），驱动压缩判定
 	softCompactNoticed bool    // 软线提醒的一次性开关，回落到软线下时重置
 
-	// Token 用量追踪（TODO #14）：累计所有 LLM 调用的真实用量；pricing 可选，配置后 /usage 展示费用。
+	// Token 用量追踪：累计所有 LLM 调用的真实用量；pricing 可选，配置后 /usage 展示费用。
 	usage   TokenUsage
 	pricing Pricing
 
-	// 可控长任务执行（TODO #15）：maxSteps 限制一次连续执行的 Plan step 数；pauseRequested 协作式暂停。
+	// 可控长任务执行：maxSteps 限制一次连续执行的 Plan step 数；pauseRequested 协作式暂停。
 	maxSteps       int
 	pauseRequested bool
 
-	// 工具 Hook（TODO #16）：所有工具执行前后统一经过 hook 链。
+	// 工具 Hook：所有工具执行前后统一经过 hook 链。
 	toolHooks []ToolHook
 
 	// 风暴检测：跟踪连续同类工具错误的次数（参照 Reasonix stormBreaker）。
@@ -72,7 +72,7 @@ type Agent struct {
 	// Run 循环每轮检测，若为 1 则停止当前操作并返回。
 	interrupted int32
 
-	// 偏好/规则型长期记忆（TODO #17）：由模型通过受限工具自主写入，system prompt 稳定注入。
+	// 偏好/规则型长期记忆：由模型通过受限工具自主写入，system prompt 稳定注入。
 	memoryStore *MemoryStore
 }
 
@@ -92,7 +92,7 @@ func New(apiKey, model string) *Agent {
 		store:       event.NewStore(".reasonix/sessions"),
 		session:     NewSession(fmt.Sprintf("session_%d", time.Now().Unix())),
 		cmdRegistry: command.NewRegistry(),
-		Mode: "ask",
+		Mode:        "ask",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
 		sysPrompt:   "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。",

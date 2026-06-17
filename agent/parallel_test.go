@@ -137,7 +137,7 @@ func TestCanRunParallel(t *testing.T) {
 		{"read_file", true},
 		{"code_search", true},
 		{"write_file", false},   // 高危
-		{"bash", false},    // 高危
+		{"bash", false},         // 高危
 		{"git_commit", false},   // 改仓库
 		{"no_such_tool", false}, // 未注册
 	}
@@ -156,5 +156,3 @@ func TestCanRunParallel(t *testing.T) {
 		t.Error("只读门下 write_file 应被拒、不可并行")
 	}
 }
-
-

@@ -2,7 +2,7 @@ package agent
 
 import "fmt"
 
-// 事件驱动输出（TODO #10）：Agent 不再到处 fmt.Print / debugf 直接打控制台，而是把
+// 事件驱动输出：Agent 不再到处 fmt.Print / debugf 直接打控制台，而是把
 // 运行过程中的「发生了什么」抽象成 Event 交给 Sink，由 Sink 决定「怎么呈现」——
 // 控制台、JSON、上层 UI、或测试里的捕获。渲染逻辑从此与 Agent 解耦、可替换、可断言。
 

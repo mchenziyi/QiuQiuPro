@@ -89,8 +89,8 @@ func main() {
 	stdin := bufio.NewReader(os.Stdin)
 
 	apiKey := getAPIKey(stdin)
-	// 默认 deepseek-v4-flash（旧 deepseek-chat 将于 2026-07-24 下线）；可经环境变量切换为
-	// deepseek-v4-pro 等。注意：V4 默认开启 thinking，客户端已统一关闭以沿用非思考行为与成本。
+	// 默认 deepseek-v4-flash；可经环境变量 DEEPSEEK_MODEL 切换为其他模型。
+	// thinking 默认开启（max），可经 DEEPSEEK_THINKING / DEEPSEEK_REASONING_EFFORT 调整。
 	model := "deepseek-v4-flash"
 	if v := strings.TrimSpace(os.Getenv("DEEPSEEK_MODEL")); v != "" {
 		model = v
@@ -454,7 +454,6 @@ func main() {
 		}
 
 		// 按模式分支
-		// 按模式分支
 		switch a.CurrentMode() {
 		case "ask":
 			// Ask 模式：直接问答，不走规划
@@ -495,5 +494,5 @@ func main() {
 			}
 			fmt.Println("\n🎉 执行完成！")
 		}
-}
+	}
 }

@@ -40,7 +40,7 @@ func TestToolHook_BeforeAndAfterWrapExecution(t *testing.T) {
 	hook := &recordingToolHook{rewrite: "REWRITTEN"}
 	a.RegisterToolHook(hook)
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{Name: "read_file", Arguments: `{"path":"a.go"}`}})
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{Name: "read_file", Arguments: `{"path":"a.go"}`}})
 
 	if got != "REWRITTEN" {
 		t.Fatalf("After hook 应能改写结果，实际 %q", got)
@@ -63,7 +63,7 @@ func TestToolHook_BeforeCanDenyAndPreserveToolResult(t *testing.T) {
 	hook := &recordingToolHook{deny: true, rewrite: "SHOULD_NOT_RUN"}
 	a.RegisterToolHook(hook)
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{Name: "read_file", Arguments: "{}"}})
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{Name: "read_file", Arguments: "{}"}})
 
 	if called {
 		t.Fatal("Before hook 拒绝时不应执行真实工具")
@@ -82,7 +82,7 @@ func TestToolHook_RunsBeforeGate(t *testing.T) {
 	a.allTools["write_file"] = tool.Tool{Name: "write_file", Execute: func(ctx context.Context, args json.RawMessage) (string, error) { return "RAW", nil }}
 	a.RegisterToolHook(hook)
 
-	got := a.executeToolCall(openai.ToolCall{Function: openai.FunctionCall{Name: "write_file", Arguments: "{}"}})
+	got := a.executeToolCall(context.Background(), openai.ToolCall{Function: openai.FunctionCall{Name: "write_file", Arguments: "{}"}})
 
 	if !strings.Contains(got, "hook denied") {
 		t.Fatalf("Hook 应先于 Gate 拒绝，实际 %q", got)

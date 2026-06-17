@@ -8,7 +8,7 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-// 上下文压缩（TODO #13）：历史超限时，与其像 Trim 那样直接丢弃最早的消息，不如让 LLM
+// 上下文压缩：历史超限时，与其像 Trim 那样直接丢弃最早的消息，不如让 LLM
 // 把旧消息总结成摘要，保留「用户目标、关键事实、读改过的文件、未完成事项」等上下文。
 // 摘要会破坏前缀缓存，但只在超限时触发，属于可接受的取舍。
 
@@ -132,7 +132,7 @@ func (a *Agent) llmSummarize(ctx context.Context, msgs []openai.ChatCompletionMe
 	if err != nil {
 		return "", err
 	}
-	a.accountUsage(resp.Usage) // 摘要调用同样计入会话用量（TODO #14）
+	a.accountUsage(resp.Usage)
 	if len(resp.Choices) == 0 {
 		return "", fmt.Errorf("摘要返回空结果")
 	}

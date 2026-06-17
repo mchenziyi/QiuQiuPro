@@ -2,10 +2,10 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
-	"encoding/json"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -45,7 +45,7 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 
 		// 执行工具 + 风暴检测
-		results, storm := a.dispatchAndDetect(msg.ToolCalls)
+		results, storm := a.dispatchAndDetect(ctx, msg.ToolCalls)
 		if storm != "" {
 			a.recordEvent("loop_guard", storm, "")
 			a.noticef("  ⚡ %s\n", storm)
@@ -56,7 +56,6 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	}
 }
 
-
 // Interrupt 中断当前 Run：设置 interrupted 标志。ReadLine 检测到后重置并继续等待输入，
 // Run 循环检测到后停止当前操作并返回。
 func (a *Agent) Interrupt() {
@@ -65,7 +64,7 @@ func (a *Agent) Interrupt() {
 
 // dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，
 // 不再回灌原始错误给 LLM，而是注入 [loop guard] 指令让它换方案。
-func (a *Agent) dispatchAndDetect(toolCalls []openai.ToolCall) ([]string, string) {
+func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCall) ([]string, string) {
 	results := make([]string, len(toolCalls))
 
 	for _, tc := range toolCalls {
@@ -81,7 +80,7 @@ func (a *Agent) dispatchAndDetect(toolCalls []openai.ToolCall) ([]string, string
 		wg.Add(1)
 		go func(i int, tc openai.ToolCall) {
 			defer wg.Done()
-			results[i] = a.executeToolCall(tc)
+			results[i] = a.executeToolCall(ctx, tc)
 		}(i, tc)
 	}
 
@@ -89,7 +88,7 @@ func (a *Agent) dispatchAndDetect(toolCalls []openai.ToolCall) ([]string, string
 		if a.canRunParallel(tc) {
 			continue
 		}
-		results[i] = a.executeToolCall(tc)
+		results[i] = a.executeToolCall(ctx, tc)
 	}
 
 	wg.Wait()
@@ -170,7 +169,7 @@ func errorPrefix(r string) string {
 
 // dispatchToolCalls 保留（测试中直接调用），内部委托给 dispatchAndDetect。
 func (a *Agent) dispatchToolCalls(toolCalls []openai.ToolCall) {
-	a.dispatchAndDetect(toolCalls)
+	a.dispatchAndDetect(context.Background(), toolCalls)
 }
 
 // canRunParallel 判断一个工具调用能否安全并发执行
@@ -190,7 +189,7 @@ func (a *Agent) canRunParallel(tc openai.ToolCall) bool {
 }
 
 // executeToolCall 执行单个工具调用并返回结果文本。
-func (a *Agent) executeToolCall(tc openai.ToolCall) string {
+func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string {
 	t, ok := a.allTools[tc.Function.Name]
 	if !ok {
 		result := fmt.Sprintf("error: 未知工具 %s", tc.Function.Name)
@@ -231,20 +230,22 @@ func (a *Agent) executeToolCall(tc openai.ToolCall) string {
 		}
 	}
 
-	result, execErr := t.Execute(context.Background(), json.RawMessage(tc.Function.Arguments))
-	if execErr != nil { return execErr.Error() }
-		return a.afterToolHooks(hookCtx, result)
+	result, execErr := t.Execute(ctx, json.RawMessage(tc.Function.Arguments))
+	if execErr != nil {
+		return execErr.Error()
+	}
+	return a.afterToolHooks(hookCtx, result)
 }
 
 // streamChat 流式调用 LLM，实时输出文本，同时积累 tool call
 func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletionMessage) (openai.ChatCompletionMessage, error) {
 	stream, err := a.client.CreateChatCompletionStream(ctx,
 		openai.ChatCompletionRequest{
-			Model:    a.model,
-			Messages: messages,
-			Tools:    a.toolDefinitions(),
+			Model:           a.model,
+			Messages:        messages,
+			Tools:           a.toolDefinitions(),
 			ReasoningEffort: a.reasoningEffort,
-			StreamOptions: &openai.StreamOptions{IncludeUsage: true},
+			StreamOptions:   &openai.StreamOptions{IncludeUsage: true},
 		},
 	)
 	if err != nil {
@@ -337,4 +338,3 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 
 	return msg, nil
 }
-

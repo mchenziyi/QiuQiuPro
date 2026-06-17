@@ -7,7 +7,7 @@ func isReadOnlyTool(name string) bool { return !highRiskTools[name] && name != "
 // 过去这套判断硬编码在 executeToolCall 里（「是高危就 fmt.Scanln 确认」），
 // 既不可配、也无法表达「只读模式拒绝写操作」。抽成可插拔接口后：
 //   - 默认 ConfirmHighRiskGate：等价于改造前的行为（高危确认，其余放行）；
-//   - ReadOnlyGate：拒绝一切改动类工具，实现「只读模式」（TODO #6）；
+//   - ReadOnlyGate：拒绝一切改动类工具，实现「只读模式」；
 //   - AllowAllGate：全放行，适合自动化 / 测试。
 
 // Decision 是 Gate 对一次工具调用的裁决。

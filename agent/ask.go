@@ -30,7 +30,7 @@ Input:
 			"properties": map[string]any{
 				"question": map[string]any{"type": "string", "description": "简短中立的问题描述，让用户知道要决定什么"},
 				"options": map[string]any{
-					"type": "array",
+					"type":     "array",
 					"minItems": 2,
 					"maxItems": 4,
 					"items": map[string]any{
@@ -48,8 +48,8 @@ Input:
 		},
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct {
-				Question      string `json:"question"`
-				Options       []struct {
+				Question string `json:"question"`
+				Options  []struct {
 					Label       string `json:"label"`
 					Description string `json:"description,omitempty"`
 				} `json:"options"`

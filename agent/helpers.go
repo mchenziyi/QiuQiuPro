@@ -12,8 +12,8 @@ import (
 // recordEvent 记录事件到日志
 func (a *Agent) recordEvent(eventType, content, toolName string) {
 	e := event.Event{
-		ID:        fmt.Sprintf("%s_%d", a.session.ID, time.Now().UnixNano()),
-		Type:      eventType, Content: content, ToolName: toolName,
+		ID:   fmt.Sprintf("%s_%d", a.session.ID, time.Now().UnixNano()),
+		Type: eventType, Content: content, ToolName: toolName,
 		Timestamp: time.Now(),
 	}
 	a.store.Append(a.session.ID, e)
@@ -23,6 +23,8 @@ func (a *Agent) recordEvent(eventType, content, toolName string) {
 // truncate 截断字符串用于日志显示
 func truncate(s string, n int) string {
 	runes := []rune(s)
-	if len(runes) <= n { return s }
+	if len(runes) <= n {
+		return s
+	}
 	return string(runes[:n]) + "..."
 }

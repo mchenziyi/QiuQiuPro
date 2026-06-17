@@ -6,31 +6,35 @@
 
 ## ✅ 已完成
 
-- [x] **CoT（思维链）**
+- [x] **CoT（思维链）**（DeepSeek V4 原生 thinking 替代手动提示）
 - [x] **流式输出**
 - [x] **Reflexion（自我反思）**
 - [x] **提示词外部化**
-- [x] **Ask/Plan 双模式**
-- [x] **提示词全面优化**（system + plan + skill）
-- [x] **run_shell 跨平台兼容**（Windows/macOS/Linux 自动适配）
+- [x] **Ask/Plan 双模式**（手动切换，Plan 带只读调研门）
+- [x] **提示词全面优化**（Reasonix 风格：场景→工具→行为）
+- [x] **bash 跨平台兼容**（Windows PowerShell / macOS+Linux sh）
 - [x] **P0-P3 工程问题修复**（跨轮工具结果 / stdin 收口 / go.mod 卫生 / 补测试）
-- [x] **web_fetch 工具**
-- [x] **更好的 run_shell**（流式输出 + 退出码）
-- [x] **code_search**（语义搜索，定义+引用子集）
+- [x] **web_fetch 工具**（HTTP GET + HTML strip + 截断）
+- [x] **bash 工具**（流式输出 + 退出码 + 32KB 截断）
+- [x] **code_search**（按符号名搜索 Go 代码）
 - [x] **/cleanup 熵管理命令**
 - [x] **Gate 权限门 + 只读模式**
-- [x] **Skill 人格扩展**（pm / backend_dev / tester / devops）
+- [x] **Skill 人格扩展**（pm / backend_dev / tester / devops / architect / code_review / frontend_design）
 - [x] **Session 独立管理**
 - [x] **并行工具执行**（只读并发，写串行）
-- [x] **事件驱动输出**（Event / Sink）
-- [x] **拆分 agent.go**（按职责分文件）
-- [x] **上下文压缩**（窗口比例 + 真实用量驱动）
-- [x] **DeepSeek V4 迁移**（thinking + max）
-- [x] **Token 用量追踪**
-- [x] **maxSteps + 暂停恢复**
-- [x] **Hook 机制**
-- [x] **长期记忆（偏好/规则型）**
-- [x] **感知层规范化**（DetectMode 自动判断 Ask/Plan）
+- [x] **事件驱动输出**（Event / Sink 可插拔）
+- [x] **拆分 agent.go**（按职责分文件：run / plan / tools / gate / sink / hooks / memory ...）
+- [x] **上下文压缩**（窗口比例 + 真实用量驱动，对前缀缓存友好）
+- [x] **DeepSeek V4 迁移**（thinking enabled + max reasoning effort）
+- [x] **Token 用量追踪**（缓存命中率 + 可选费用估算）
+- [x] **maxSteps + 暂停恢复**（协作式 pause/resume + ExecutionState 持久化）
+- [x] **Hook 机制**（BeforeToolCall / AfterToolCall 链）
+- [x] **长期记忆（偏好/规则型）**（模型通过 remember_rule 自主写入）
+- [x] **工具接口改造**（`Execute(ctx, args) (string, error)` + ReadOnly 字段）
+- [x] **风暴检测**（连续同类错误自动打断 + 指导换方案）
+- [x] **Ctrl+C 中断**（协作式 interrupt，优雅停止当前操作）
+- [x] **Plan 模式只读门**（调研只读 → 方案审批 → 放行执行）
+- [x] **ctx 贯穿工具执行**（Run → dispatchAndDetect → executeToolCall → Tool.Execute 全链路传递）
 
 ---
 
@@ -38,52 +42,22 @@
 
 - **LLM Provider 抽象** — 暂缓（当前只需 DeepSeek）
 - **RAG / 知识型记忆** — 不做（coding Agent 不需要）
-
-
+- **感知层自动模式** — 已移除（实验后发现不如手动切换可控）
 
 ---
 
-## 🆕 Reasonix 对比发现的差距（2025-06-16）
+## 🔜 待改进
 
-> 对比分析详见 docs/29-reasonix-gap-analysis.md
+#### 工具增强
+- `grep`：支持真正的正则表达式（当前是 strings.Contains）
+- `glob`：支持递归 `**` 模式（当前只有 filepath.Glob 单层）
+- `code_search`：升级为 AST 级别符号搜索
+- `todo_write`：任务状态持久化
 
-### 🥇 优先做
-
-#### ✅ 20. 提示词全面优化 — 已完成
-- system prompt：Reasonix 风格（场景→工具→行为）
-- plan prompt：砍角色声明，保留核心指令
-- 详见 docs/30-prompt-rewrite.md
-- 文件：prompt/default/system.xml + prompt/plan/*.xml
-
-#### 21. 工具接口改造（ctx + error 返回）
-- `Execute func(args string) string` → `Execute(ctx, args) (string, error)`
-- 没了 context，工具不能超时取消；没了 error，错误靠字符串猜
-- 难度：★★★★☆（所有工具都要改签名）
-
-#### 22. 工具输出截断（32KB cap）
-- 一次 read_file 可能灌爆上下文窗口
-- 参照 Reasonix：head+tail 截断 + 引导 LLM 如何重取
-- 难度：★★☆☆☆
-
-### 🥈 后续做
-
-#### 23. Evidence 账本
-- 记录每次工具执行的 receipt，防止模型编造"已完成"
-- 难度：★★★★☆
-
-#### 24. 子 Agent 事件嵌套
-- 子 Agent 工具调用和父级混在一起，输出一团乱
-- 难度：★★★☆☆
-
-#### 25. 更多 Hook 扩展点（PreCompact/SubagentStop/PostLLMCall）
-- 难度：★★★☆☆
-
-#### 26. Compaction 归档 + 卡住检测
-- 压缩后旧消息直接丢 → 写入 archive.jsonl
-- 连续压缩无法降低 prompt → 暂停并警告
-- 难度：★★☆☆☆
-
-#### 27. finish_reason 映射
-- 模型被截断/内容过滤了都不知道
-- 难度：★☆☆☆☆
+#### 质量改进
+- Evidence 账本：记录工具执行 receipt，防止模型编造"已完成"
+- 子 Agent 事件嵌套：子 Agent 输出与父级分层展示
+- 更多 Hook 扩展点（PreCompact / SubagentStop / PostLLMCall）
+- Compaction 归档 + 卡住检测
+- finish_reason 映射
 

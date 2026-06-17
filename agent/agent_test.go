@@ -3,7 +3,7 @@ package agent
 import "testing"
 
 func TestIsHighRiskTool(t *testing.T) {
-	high := []string{"write_file", "edit_file", "bash", }
+	high := []string{"write_file", "edit_file", "bash"}
 	for _, name := range high {
 		if !IsHighRiskTool(name) {
 			t.Errorf("%s 应被判为高危", name)
@@ -23,11 +23,11 @@ func TestTruncate(t *testing.T) {
 		n    int
 		want string
 	}{
-		{"hello", 10, "hello"},      // 短于上限：原样
-		{"hello", 5, "hello"},       // 恰好等于上限：原样
-		{"hello", 3, "hel..."},      // 超出：截断 + ...
-		{"", 3, ""},                 // 空串
-		{"你好世界啊", 2, "你好..."}, // 按 rune（而非字节）截断中文
+		{"hello", 10, "hello"}, // 短于上限：原样
+		{"hello", 5, "hello"},  // 恰好等于上限：原样
+		{"hello", 3, "hel..."}, // 超出：截断 + ...
+		{"", 3, ""},            // 空串
+		{"你好世界啊", 2, "你好..."},  // 按 rune（而非字节）截断中文
 	}
 	for _, c := range cases {
 		if got := truncate(c.in, c.n); got != c.want {
@@ -53,7 +53,3 @@ func TestStripCodeFence(t *testing.T) {
 		}
 	}
 }
-
-
-
-

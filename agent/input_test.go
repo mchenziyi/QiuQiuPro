@@ -50,7 +50,7 @@ func TestConfirm(t *testing.T) {
 		{"y\n", true},    //
 		{"Y\n", true},    //
 		{"yes\n", true},  //
-		{"随便\n", true},  // 非 n 都算确认
+		{"随便\n", true},   // 非 n 都算确认
 		{"n\n", false},   //
 		{"N\n", false},   //
 		{"no\n", false},  //

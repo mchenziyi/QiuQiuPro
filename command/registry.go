@@ -10,8 +10,8 @@ import (
 
 // Command 定义一个斜杠命令
 type Command struct {
-	Name        string          // 命令名
-	Description string          // 帮助说明
+	Name        string                 // 命令名
+	Description string                 // 帮助说明
 	Handler     func(args string) bool // 处理函数，返回 true 表示已处理
 }
 

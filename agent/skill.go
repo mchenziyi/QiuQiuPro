@@ -35,7 +35,11 @@ func (a *Agent) SetMode(mode string) {
 		return
 	}
 	a.Mode = mode
-	if mode == "plan" { a.SetPlanMode(true) } else { a.SetPlanMode(false) }
+	if mode == "plan" {
+		a.SetPlanMode(true)
+	} else {
+		a.SetPlanMode(false)
+	}
 	a.noticef("  🔄 切换到 [%s] 模式\n", mode)
 }
 
