@@ -6,3 +6,5 @@
 # 产物文件
 output/
 *.jsonl
+
+agentdemo.exe
