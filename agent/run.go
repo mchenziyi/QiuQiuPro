@@ -1,4 +1,4 @@
-package agent
+﻿package agent
 
 import (
 	"context"
@@ -232,6 +232,9 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 
 	result, execErr := t.Execute(ctx, json.RawMessage(tc.Function.Arguments))
 	if execErr != nil {
+		if result != "" {
+			return fmt.Sprintf("%s\n%s", result, execErr.Error())
+		}
 		return execErr.Error()
 	}
 	return a.afterToolHooks(hookCtx, result)

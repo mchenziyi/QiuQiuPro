@@ -103,7 +103,7 @@ func NewEditFileTool() Tool {
 			prop("new_string", "string", ""),
 		).Required("path", "old_string", "new_string"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
-			var p struct{ Path, OldString, NewString string }
+			var p struct{ Path string `json:"path"`; OldString string `json:"old_string"`; NewString string `json:"new_string"` }
 			json.Unmarshal(args, &p)
 			b, err := os.ReadFile(p.Path)
 			if err != nil {
