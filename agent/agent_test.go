@@ -9,11 +9,20 @@ func TestIsHighRiskTool(t *testing.T) {
 			t.Errorf("%s 应被判为高危", name)
 		}
 	}
-	safe := []string{"read_file", "ls", "glob", "grep", "search_files", "git_commit", "unknown_tool", ""}
+	safe := []string{"read_file", "ls", "glob", "grep", "search_files", "git_commit", memoryToolName, "unknown_tool", ""}
 	for _, name := range safe {
 		if IsHighRiskTool(name) {
 			t.Errorf("%s 不应被判为高危", name)
 		}
+	}
+}
+
+func TestRememberRuleGateBehavior(t *testing.T) {
+	if decision, reason := (ConfirmHighRiskGate{}).Check(memoryToolName, "{}"); decision != GateAllow || reason != "" {
+		t.Fatalf("默认权限门应直接允许 remember_rule，实际 decision=%v reason=%q", decision, reason)
+	}
+	if decision, reason := (ReadOnlyGate{}).Check(memoryToolName, "{}"); decision != GateDeny || reason == "" {
+		t.Fatalf("只读权限门应拒绝 remember_rule，实际 decision=%v reason=%q", decision, reason)
 	}
 }
 

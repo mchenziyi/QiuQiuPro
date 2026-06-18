@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 
@@ -89,6 +90,44 @@ func TestAgent_BuildSystemPromptIncludesMemory(t *testing.T) {
 	got := a.BuildSystemPrompt()
 	if !strings.Contains(got, "BASE") || !strings.Contains(got, "回答保持简洁") {
 		t.Fatalf("system prompt 应包含基础提示词与长期记忆：\n%s", got)
+	}
+}
+
+func TestAgent_BuildSystemPromptIncludesQiuqiuMarkdownRules(t *testing.T) {
+	dir := t.TempDir()
+	globalRules := dir + "/global-QIUQIU.md"
+	projectRules := dir + "/project-QIUQIU.md"
+	if err := os.WriteFile(globalRules, []byte("# 全局规则\n编码前思考"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(projectRules, []byte("# 项目规则\n精准修改"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	store := NewMemoryStore(dir+"/global.json", dir+"/project.json")
+	if _, err := store.Add(MemoryScopeGlobal, MemoryKindPreference, "回答保持简洁", "model"); err != nil {
+		t.Fatal(err)
+	}
+
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.sysPrompt = "BASE"
+	a.qiuqiuRuleFiles = []QiuqiuRuleFile{
+		{Title: "全局 QIUQIU.md", Path: globalRules},
+		{Title: "项目 QIUQIU.md", Path: projectRules},
+		{Title: "缺失规则", Path: dir + "/missing.md"},
+	}
+	a.SetMemoryStore(store)
+
+	got := a.BuildSystemPrompt()
+	for _, want := range []string{"BASE", "## QiuQiuPro 规则文件", "全局 QIUQIU.md", "编码前思考", "项目 QIUQIU.md", "精准修改", "回答保持简洁"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("system prompt 缺少 %q：\n%s", want, got)
+		}
+	}
+	if strings.Index(got, "编码前思考") > strings.Index(got, "回答保持简洁") {
+		t.Fatalf("QIUQIU.md 规则应在结构化 memory 前：\n%s", got)
+	}
+	if strings.Contains(got, "缺失规则") {
+		t.Fatalf("缺失规则文件不应渲染：\n%s", got)
 	}
 }
 
@@ -230,6 +269,20 @@ func TestSessionTrim_PreservesToolPairing(t *testing.T) {
 		t.Fatalf("窗口不应以孤立的 tool 消息开头")
 	}
 	assertValidToolPairing(t, msgs)
+}
+
+func TestSessionTrim_IncrementsRewriteWhenTruncated(t *testing.T) {
+	s := NewSession("test")
+	s.maxMessages = 2
+	s.Add(openai.ChatCompletionMessage{Role: "user", Content: "old"})
+	s.Add(openai.ChatCompletionMessage{Role: "assistant", Content: "middle"})
+	s.Add(openai.ChatCompletionMessage{Role: "user", Content: "new"})
+
+	s.Trim()
+
+	if s.RewriteVersion() != 1 {
+		t.Fatalf("Trim 截断历史后应递增 rewrite version，实际 %d", s.RewriteVersion())
+	}
 }
 
 // 有 system 提示词时，请求应把 system 前置，且不修改历史本身。

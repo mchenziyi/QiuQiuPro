@@ -88,7 +88,8 @@ type Agent struct {
 	interrupted int32
 
 	// 偏好/规则型长期记忆：由模型通过受限工具自主写入，system prompt 稳定注入。
-	memoryStore *MemoryStore
+	memoryStore     *MemoryStore
+	qiuqiuRuleFiles []QiuqiuRuleFile
 }
 
 const maxMessages = 100
@@ -132,6 +133,7 @@ func New(apiKey, model string, continueSession bool) (*Agent, error) {
 		compactForceRatio: defaultCompactForce,
 		reasoningEffort:   effort,
 		memoryStore:       DefaultMemoryStore(),
+		qiuqiuRuleFiles:   DefaultQiuqiuRuleFiles(),
 	}
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
@@ -179,6 +181,7 @@ func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) 
 		maxSteps:          a.maxSteps,        // 子任务同样受步数上限保护，但不继承暂停请求
 		toolHooks:         a.toolHooks,
 		memoryStore:       a.memoryStore,
+		qiuqiuRuleFiles:   a.qiuqiuRuleFiles,
 	}
 	sub.composeCachedSystemPrompt()
 	sub.summarizer = sub.llmSummarize

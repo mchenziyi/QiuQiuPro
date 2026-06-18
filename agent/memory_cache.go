@@ -2,25 +2,71 @@ package agent
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 )
 
-// composeCachedSystemPrompt 在启动时一次性合成 system prompt（含磁盘上的长期记忆）。
+// QiuqiuRuleFile 是人工维护的 Markdown 规则文件，类似 CLAUDE.md / reasonix.md。
+type QiuqiuRuleFile struct {
+	Title string
+	Path  string
+}
+
+func DefaultQiuqiuRuleFiles() []QiuqiuRuleFile {
+	home, _ := os.UserHomeDir()
+	return []QiuqiuRuleFile{
+		{Title: "全局 QIUQIU.md", Path: filepath.Join(home, ".qiuqiu", "QIUQIU.md")},
+		{Title: "项目 QIUQIU.md", Path: "QIUQIU.md"},
+	}
+}
+
+// composeCachedSystemPrompt 在启动时一次性合成 system prompt（含规则文件与磁盘上的长期记忆）。
 // 会话内 remember/forget 通过 turn-tail 注入，不改动此稳定前缀（对齐 Reasonix Compose）。
 func (a *Agent) composeCachedSystemPrompt() {
-	base := a.sysPrompt
-	if a.memoryStore == nil {
-		a.cachedSystemPrompt = base
-		return
+	parts := []string{strings.TrimRight(a.sysPrompt, "\n")}
+	if block := a.renderQiuqiuRulesBlock(); block != "" {
+		parts = append(parts, block)
 	}
-	block, err := a.memoryStore.RenderPromptBlock()
-	if err != nil || block == "" {
-		a.cachedSystemPrompt = base
-		return
+	if a.memoryStore != nil {
+		if block, err := a.memoryStore.RenderPromptBlock(); err == nil && block != "" {
+			parts = append(parts, block)
+		}
 	}
-	a.cachedSystemPrompt = strings.TrimRight(base, "\n") + "\n\n" + block
+	a.cachedSystemPrompt = strings.Join(parts, "\n\n")
+}
+
+func (a *Agent) renderQiuqiuRulesBlock() string {
+	if len(a.qiuqiuRuleFiles) == 0 {
+		a.qiuqiuRuleFiles = DefaultQiuqiuRuleFiles()
+	}
+	var b strings.Builder
+	for _, f := range a.qiuqiuRuleFiles {
+		content, err := os.ReadFile(f.Path)
+		if err != nil {
+			continue
+		}
+		text := strings.TrimSpace(string(content))
+		if text == "" {
+			continue
+		}
+		if b.Len() == 0 {
+			b.WriteString("## QiuQiuPro 规则文件\n")
+			b.WriteString("以下 Markdown 规则由用户人工维护，优先作为长期工作准则执行。\n")
+		}
+		title := strings.TrimSpace(f.Title)
+		if title == "" {
+			title = f.Path
+		}
+		b.WriteString("\n### ")
+		b.WriteString(title)
+		b.WriteString("\n")
+		b.WriteString(text)
+		b.WriteString("\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }
 
 // queueMemoryNote 将会话内记忆变更排队，下一轮用户输入时以 turn-tail 注入。
@@ -43,7 +89,9 @@ func (a *Agent) composeUserTurn(text string) string {
 	b.WriteString("<memory-update>\n")
 	b.WriteString("The following memory changes were just made and apply from now on:\n")
 	for _, n := range notes {
-		b.WriteString("- " + n + "\n")
+		b.WriteString("- ")
+		b.WriteString(n)
+		b.WriteString("\n")
 	}
 	b.WriteString("</memory-update>\n\n")
 	b.WriteString(text)

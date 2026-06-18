@@ -1,6 +1,8 @@
 package agent
 
-func isReadOnlyTool(name string) bool { return !highRiskTools[name] && name != "git_commit" }
+func isReadOnlyTool(name string) bool {
+	return !highRiskTools[name] && name != "git_commit" && name != memoryToolName
+}
 
 // Gate（权限门）决定一次工具调用是放行、需确认、还是直接拒绝。
 //

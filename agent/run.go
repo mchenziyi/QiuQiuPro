@@ -1,4 +1,4 @@
-﻿package agent
+package agent
 
 import (
 	"context"
@@ -80,6 +80,9 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		if storm != "" {
 			a.recordEvent("loop_guard", storm, "")
 			a.noticef("  ⚡ %s\n", storm)
+			boundary := loopGuardBoundaryMessage(storm)
+			a.recordEvent("assistant", boundary, "")
+			a.session.Add(openai.ChatCompletionMessage{Role: "assistant", Content: boundary})
 			a.SaveCheckpoint()
 			return results[0], fmt.Errorf("%s", storm)
 		}
@@ -120,6 +123,12 @@ func (a *Agent) truncateSession(toLen int) {
 		return
 	}
 	a.session.Replace(msgs[:toLen])
+}
+
+func loopGuardBoundaryMessage(storm string) string {
+	return "【loop guard】上一轮任务因连续相同工具错误已停止。\n" +
+		storm + "\n" +
+		"除非用户明确要求继续该失败任务，下一条用户输入必须按新任务处理；不要延续失败的工具调用。"
 }
 
 // dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，

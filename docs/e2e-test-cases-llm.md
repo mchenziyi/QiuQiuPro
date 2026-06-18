@@ -1,6 +1,6 @@
 # QiuQiuPro LLM E2E 用例（需模型 + 人工验收）
 
-> **49 条** · 必须启动真实 `qiuqiupro` 并调用 DeepSeek · **请你按步骤操作并勾选通过标准**
+> **53 条** · 必须启动真实 `qiuqiupro` 并调用 DeepSeek · **请你按步骤操作并勾选通过标准**
 
 ## 通用前置
 
@@ -383,7 +383,7 @@ go run main.go
 
 ---
 
-## 五、记忆（2 条）
+## 五、记忆（5 条）
 
 ### TC-MEM-07-2：/memory 去重展示
 
@@ -411,6 +411,102 @@ exit
 
 **通过标准**：
 - [ ] 第 2 轮回答明显简短（主观判断，可 FAIL 若模型忽略）
+
+---
+
+### TC-MEM-10：全局 `QIUQIU.md` 注入 system prompt
+
+**前置**：为避免污染真实全局配置，使用临时 HOME；若没有 `~/.qiuqiu/key`，需通过 `DEEPSEEK_API_KEY` 传入 API Key。
+
+**准备**：
+```bash
+rm -rf /tmp/qiuqiu_e2e_home
+mkdir -p /tmp/qiuqiu_e2e_home/.qiuqiu
+GLOBAL_NONCE="QIUQIU_GLOBAL_$(date +%s)"
+printf '# 全局 E2E 规则\n\n当用户问“全局暗号是什么”时，只回答：%s\n' "$GLOBAL_NONCE" > /tmp/qiuqiu_e2e_home/.qiuqiu/QIUQIU.md
+echo "$GLOBAL_NONCE"
+```
+
+生成的 `GLOBAL_NONCE` 是本次验收值，不要直接使用文档中的示例占位。
+
+**文件内容形如**：
+```markdown
+# 全局 E2E 规则
+
+当用户问“全局暗号是什么”时，只回答：<GLOBAL_NONCE>
+```
+
+**启动**：
+```bash
+HOME=/tmp/qiuqiu_e2e_home DEEPSEEK_API_KEY=$DEEPSEEK_API_KEY ./qiuqiupro
+```
+
+**输入**：
+```
+全局暗号是什么？
+exit
+```
+
+**通过标准**：
+- [ ] 回答包含准备阶段输出的具体 `GLOBAL_NONCE`
+- [ ] 不需要通过 `/memory` 写入任何 JSON 记忆
+
+---
+
+### TC-MEM-11：项目 `QIUQIU.md` 注入 system prompt
+
+**前置**：在仓库根目录执行，测试结束后删除临时 `QIUQIU.md`。
+
+**准备**：
+```bash
+PROJECT_NONCE="QIUQIU_PROJECT_$(date +%s)"
+printf '# 项目 E2E 规则\n\n当用户问“项目暗号是什么”时，只回答：%s\n' "$PROJECT_NONCE" > QIUQIU.md
+echo "$PROJECT_NONCE"
+```
+
+生成的 `PROJECT_NONCE` 是本次验收值，不要直接使用文档中的示例占位。
+
+**文件内容形如**：
+```markdown
+# 项目 E2E 规则
+
+当用户问“项目暗号是什么”时，只回答：<PROJECT_NONCE>
+```
+
+**输入**：
+```
+项目暗号是什么？
+exit
+```
+
+**清理**：
+```bash
+rm QIUQIU.md
+```
+
+**通过标准**：
+- [ ] 回答包含准备阶段输出的具体 `PROJECT_NONCE`
+- [ ] 删除 `QIUQIU.md` 并重启后，再问“项目暗号是什么？”，回答不包含该具体 `PROJECT_NONCE`
+
+---
+
+### TC-MEM-12：`QIUQIU.md` 与 JSON memory 分工
+
+**前置**：沿用 TC-MEM-10 的临时 HOME，确保存在 `/tmp/qiuqiu_e2e_home/.qiuqiu/QIUQIU.md`，并记录当时输出的 `GLOBAL_NONCE`。
+
+**输入**：
+```
+/memory
+请记住偏好：回复要简洁
+/memory
+全局暗号是什么？
+exit
+```
+
+**通过标准**：
+- [ ] 第一次 `/memory` 不展示具体 `GLOBAL_NONCE` 或 `全局 E2E 规则`
+- [ ] 第二次 `/memory` 展示“回复要简洁”
+- [ ] `QIUQIU.md` 规则仍生效，回答包含具体 `GLOBAL_NONCE`
 
 ---
 
@@ -483,7 +579,7 @@ exit
 
 ---
 
-## 九、风暴检测（5 条）
+## 九、风暴检测（6 条）
 
 ### TC-STORM-01 ~ 05
 
@@ -495,7 +591,28 @@ exit
 
 其余 STORM 用例按原文档判定计数重置逻辑 — 需观察多轮工具失败模式。
 
-**当前实测（2026-06-18）**：连续读取不存在文件会触发 `⚡ [loop guard]` 并终止，核心风暴检测通过；但后续普通问候曾被上一轮 loop guard 错误上下文影响，记录为 **待优化 T-2**。
+**当前实测（2026-06-18）**：按 `TC-STORM-06` 的单次重复读取方式可触发 `⚡ [loop guard]` 并终止；随后输入 `你好` 会按新任务回复问候，且第二轮缓存诊断保持高命中、无 `log_rewrite`。T-2 已修复。
+
+---
+
+### TC-STORM-06：loop guard 后普通输入不被污染，且保持 append-only 缓存链
+
+**输入序列**：
+```
+请触发 loop guard：每一轮只调用一次 read_file 读取 /tmp/qiuqiu_loop_guard_missing.txt；如果失败，不要总结、不换方案，继续下一轮再次调用完全相同的 read_file，直到系统提示 loop guard 后停止。
+```
+
+等待终端出现 `⚡ [loop guard]` 或 `loop_guard` 后，再输入：
+```
+你好
+exit
+```
+
+**通过标准**：
+- [ ] 第一轮在输入 `你好` 前出现 `⚡ [loop guard]` 或 `loop_guard` 事件
+- [ ] 第一轮终止后，第二轮 `你好` 按新任务回复问候，不继续解释或重试上一轮不存在文件
+- [ ] 第二轮仍能看到前缀缓存诊断；不应因 loop guard 修复出现 `log_rewrite` 之类的历史重写提示
+- [ ] 自动化回归 `TestRunLoopGuardAppendsBoundaryAndKeepsCachePrefix` 通过，证明下一轮请求完整复用上一轮请求前缀
 
 ---
 
@@ -570,11 +687,11 @@ exit
 
 ## 当前待优化项
 
-| ID | 来源用例 | 待优化项 | 当前影响 |
-|----|----------|----------|----------|
-| T-1 | TC-STEPS-03 | Plan 执行中无法可靠输入 `/pause`；需要后台控制命令通道或 step 间显式控制点 | 用例无法严格验收执行中暂停 |
-| T-2 | TC-INT-02 / TC-STORM-01 | loop guard 错误历史可能影响后续普通输入 | 中断后普通问候可能被上一轮错误语境污染 |
-| T-3 | TC-PROMPT-04 | Plan 步骤失败后重规划应输出明确 `重新规划` 提示 | generate/review/reflect 可见，但 replan 可观察性不足 |
+| ID | 优先级 | 来源用例 | 待优化项 | 当前影响 |
+|----|--------|----------|----------|----------|
+| T-1 | 低，后续 Web/控制层一起做 | TC-STEPS-03 | Plan 执行中无法可靠输入 `/pause`；需要后台控制命令通道或 step 间显式控制点 | 用例无法严格验收执行中暂停 |
+| T-2 | 已修复（2026-06-18） | TC-INT-02 / TC-STORM-01 | loop guard 触发时追加 assistant 终止边界，避免错误语境污染后续普通输入，同时保持 append-only 前缀缓存链 | 已补 `TestRunLoopGuardAppendsBoundaryAndKeepsCachePrefix` |
+| T-3 | 低，后续 Web/控制层一起做 | TC-PROMPT-04 | Plan 步骤失败后重规划应输出明确 `重新规划` 提示 | generate/review/reflect 可见，但 replan 可观察性不足 |
 
 ---
 

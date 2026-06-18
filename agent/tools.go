@@ -82,10 +82,9 @@ func (a *Agent) isReadOnlyTool(name string) bool {
 }
 
 var highRiskTools = map[string]bool{
-	"write_file":    true,
-	"edit_file":     true,
-	"bash":          true,
-	"remember_rule": true,
+	"write_file": true,
+	"edit_file":  true,
+	"bash":       true,
 }
 
 func IsHighRiskTool(name string) bool {

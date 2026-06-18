@@ -79,6 +79,7 @@ func (s *Session) Trim() {
 		start++
 	}
 	s.messages = append([]openai.ChatCompletionMessage(nil), s.messages[start:]...)
+	s.IncrementRewrite()
 }
 
 // minRecentKeep 是压缩后至少保留的近消息条数（即便单条就已超出 token 预算）。
