@@ -126,8 +126,64 @@ func TestAgent_BuildSystemPromptIncludesQiuqiuMarkdownRules(t *testing.T) {
 	if strings.Index(got, "编码前思考") > strings.Index(got, "回答保持简洁") {
 		t.Fatalf("QIUQIU.md 规则应在结构化 memory 前：\n%s", got)
 	}
-	if strings.Contains(got, "缺失规则") {
-		t.Fatalf("缺失规则文件不应渲染：\n%s", got)
+	if strings.Contains(got, "### 缺失规则") {
+		t.Fatalf("缺失规则文件不应渲染为规则内容块：\n%s", got)
+	}
+}
+
+func TestAgent_EnsureQiuqiuRuleFilesCreatesMissingTemplates(t *testing.T) {
+	dir := t.TempDir()
+	globalRules := dir + "/global/QIUQIU.md"
+	projectRules := dir + "/project/QIUQIU.md"
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.sysPrompt = "BASE"
+	a.memoryStore = nil
+	a.qiuqiuRuleFiles = []QiuqiuRuleFile{
+		{Title: "全局 QIUQIU.md", Path: globalRules},
+		{Title: "项目 QIUQIU.md", Path: projectRules},
+	}
+
+	if err := a.EnsureQiuqiuRuleFiles(); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{globalRules, projectRules} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("应自动创建 %s: %v", path, err)
+		}
+		if !strings.Contains(string(data), "QiuQiuPro") {
+			t.Fatalf("模板应包含 QiuQiuPro 标题，实际：\n%s", string(data))
+		}
+	}
+	got := a.BuildSystemPrompt()
+	if strings.Contains(got, "在这里写入") || strings.Contains(got, "## QiuQiuPro 规则文件") {
+		t.Fatalf("仅有模板时不应注入模板正文或规则内容块：\n%s", got)
+	}
+}
+
+func TestAgent_EnsureQiuqiuRuleFilesDoesNotOverwriteExistingRules(t *testing.T) {
+	dir := t.TempDir()
+	rules := dir + "/QIUQIU.md"
+	if err := os.WriteFile(rules, []byte("# Custom\n\n- 必须说 custom"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.sysPrompt = "BASE"
+	a.memoryStore = nil
+	a.qiuqiuRuleFiles = []QiuqiuRuleFile{{Title: "项目 QIUQIU.md", Path: rules}}
+
+	if err := a.EnsureQiuqiuRuleFiles(); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(rules)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "# Custom\n\n- 必须说 custom" {
+		t.Fatalf("已有规则不应被覆盖：\n%s", string(data))
+	}
+	if got := a.BuildSystemPrompt(); !strings.Contains(got, "必须说 custom") {
+		t.Fatalf("已有规则应继续注入 system prompt：\n%s", got)
 	}
 }
 

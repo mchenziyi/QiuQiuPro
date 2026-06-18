@@ -1,6 +1,6 @@
 # QiuQiuPro LLM E2E 用例（需模型 + 人工验收）
 
-> **53 条** · 必须启动真实 `qiuqiupro` 并调用 DeepSeek · **请你按步骤操作并勾选通过标准**
+> **54 条** · 必须启动真实 `qiuqiupro` 并调用 DeepSeek · **请你按步骤操作并勾选通过标准**
 
 ## 通用前置
 
@@ -383,7 +383,7 @@ go run main.go
 
 ---
 
-## 五、记忆（5 条）
+## 五、记忆（6 条）
 
 ### TC-MEM-07-2：/memory 去重展示
 
@@ -414,7 +414,35 @@ exit
 
 ---
 
-### TC-MEM-10：全局 `QIUQIU.md` 注入 system prompt
+### TC-MEM-10：启动时自动创建全局/项目 `QIUQIU.md` 模板
+
+**前置**：使用临时 HOME 和临时项目目录，避免污染真实配置和仓库。
+
+**准备与启动**：
+```bash
+rm -rf /tmp/qiuqiu_autocreate_home /tmp/qiuqiu_autocreate_project
+mkdir -p /tmp/qiuqiu_autocreate_home/.qiuqiu /tmp/qiuqiu_autocreate_project
+cp ~/.qiuqiu/key /tmp/qiuqiu_autocreate_home/.qiuqiu/key
+cd /tmp/qiuqiu_autocreate_project
+HOME=/tmp/qiuqiu_autocreate_home /path/to/qiuqiupro
+```
+
+启动后输入：
+```
+以后有很长、需要人工维护的长期规则，应该写在哪？
+exit
+```
+
+**通过标准**：
+- [ ] 自动创建 `/tmp/qiuqiu_autocreate_home/.qiuqiu/QIUQIU.md`
+- [ ] 自动创建 `/tmp/qiuqiu_autocreate_project/QIUQIU.md`
+- [ ] 两个文件包含 QiuQiuPro 规则模板
+- [ ] 回答说明长期规则可写入全局和项目 `QIUQIU.md`
+- [ ] 重新启动不会覆盖已编辑内容
+
+---
+
+### TC-MEM-11：全局 `QIUQIU.md` 注入 system prompt
 
 **前置**：为避免污染真实全局配置，使用临时 HOME；若没有 `~/.qiuqiu/key`，需通过 `DEEPSEEK_API_KEY` 传入 API Key。
 
@@ -453,7 +481,7 @@ exit
 
 ---
 
-### TC-MEM-11：项目 `QIUQIU.md` 注入 system prompt
+### TC-MEM-12：项目 `QIUQIU.md` 注入 system prompt
 
 **前置**：在仓库根目录执行，测试结束后删除临时 `QIUQIU.md`。
 
@@ -490,9 +518,9 @@ rm QIUQIU.md
 
 ---
 
-### TC-MEM-12：`QIUQIU.md` 与 JSON memory 分工
+### TC-MEM-13：`QIUQIU.md` 与 JSON memory 分工
 
-**前置**：沿用 TC-MEM-10 的临时 HOME，确保存在 `/tmp/qiuqiu_e2e_home/.qiuqiu/QIUQIU.md`，并记录当时输出的 `GLOBAL_NONCE`。
+**前置**：沿用 TC-MEM-11 的临时 HOME，确保存在 `/tmp/qiuqiu_e2e_home/.qiuqiu/QIUQIU.md`，并记录当时输出的 `GLOBAL_NONCE`。
 
 **输入**：
 ```

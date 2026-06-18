@@ -1,6 +1,7 @@
 package agent
 
 import (
+	_ "embed"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,12 +16,49 @@ type QiuqiuRuleFile struct {
 	Path  string
 }
 
+//go:embed templates/qiuqiu_global.md
+var qiuqiuGlobalRuleTemplate string
+
+//go:embed templates/qiuqiu_project.md
+var qiuqiuProjectRuleTemplate string
+
 func DefaultQiuqiuRuleFiles() []QiuqiuRuleFile {
 	home, _ := os.UserHomeDir()
 	return []QiuqiuRuleFile{
 		{Title: "全局 QIUQIU.md", Path: filepath.Join(home, ".qiuqiu", "QIUQIU.md")},
 		{Title: "项目 QIUQIU.md", Path: "QIUQIU.md"},
 	}
+}
+
+func (a *Agent) EnsureQiuqiuRuleFiles() error {
+	if len(a.qiuqiuRuleFiles) == 0 {
+		a.qiuqiuRuleFiles = DefaultQiuqiuRuleFiles()
+	}
+	for _, f := range a.qiuqiuRuleFiles {
+		if strings.TrimSpace(f.Path) == "" {
+			continue
+		}
+		if _, err := os.Stat(f.Path); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := os.MkdirAll(filepath.Dir(f.Path), 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(f.Path, []byte(qiuqiuRuleTemplate(f.Title)), 0644); err != nil {
+			return err
+		}
+	}
+	a.composeCachedSystemPrompt()
+	return nil
+}
+
+func qiuqiuRuleTemplate(title string) string {
+	if strings.Contains(title, "项目") {
+		return qiuqiuProjectRuleTemplate
+	}
+	return qiuqiuGlobalRuleTemplate
 }
 
 // composeCachedSystemPrompt 在启动时一次性合成 system prompt（含规则文件与磁盘上的长期记忆）。
@@ -52,6 +90,9 @@ func (a *Agent) renderQiuqiuRulesBlock() string {
 		if text == "" {
 			continue
 		}
+		if isGeneratedQiuqiuRuleTemplate(text) {
+			continue
+		}
 		if b.Len() == 0 {
 			b.WriteString("## QiuQiuPro 规则文件\n")
 			b.WriteString("以下 Markdown 规则由用户人工维护，优先作为长期工作准则执行。\n")
@@ -67,6 +108,12 @@ func (a *Agent) renderQiuqiuRulesBlock() string {
 		b.WriteString("\n")
 	}
 	return strings.TrimRight(b.String(), "\n")
+}
+
+func isGeneratedQiuqiuRuleTemplate(text string) bool {
+	text = strings.TrimSpace(text)
+	return text == strings.TrimSpace(qiuqiuGlobalRuleTemplate) ||
+		text == strings.TrimSpace(qiuqiuProjectRuleTemplate)
 }
 
 // queueMemoryNote 将会话内记忆变更排队，下一轮用户输入时以 turn-tail 注入。

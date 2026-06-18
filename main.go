@@ -83,6 +83,9 @@ func main() {
 		os.Exit(1)
 	}
 	a.SetInput(stdin)
+	if err := a.EnsureQiuqiuRuleFiles(); err != nil {
+		fmt.Printf("⚠️ 初始化 QIUQIU.md 失败：%v\n", err)
+	}
 	a.RegisterTools(tool.AllBuiltInTools())
 	a.RegisterTool(a.NewRememberRuleTool())
 	a.RegisterTool(a.NewAskTool())

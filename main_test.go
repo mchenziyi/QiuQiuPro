@@ -3,12 +3,25 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"agentdemo/agent"
 	"agentdemo/command"
 	"agentdemo/skill"
 )
+
+func TestDefaultSystemPromptMentionsQiuqiuRuleFiles(t *testing.T) {
+	prompt, err := agent.LoadRawPrompt("prompt/default/system.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"~/.qiuqiu/QIUQIU.md", "当前项目根目录的 QIUQIU.md", "remember_rule"} {
+		if !strings.Contains(prompt, want) {
+			t.Fatalf("默认 system prompt 应说明 %q：\n%s", want, prompt)
+		}
+	}
+}
 
 func TestUseDefaultRestoresDefaultSkill(t *testing.T) {
 	home := t.TempDir()
