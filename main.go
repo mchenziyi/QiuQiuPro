@@ -139,9 +139,11 @@ func main() {
 		tools, err := mc.DiscoverTools()
 		if err != nil {
 			fmt.Printf("  ⚠️  [%s] 工具发现失败：%v\n", cfg.Name, err)
+			mc.Close()
 			continue
 		}
 		a.RegisterMCPTools(mc.Name, tools)
+		mcpMgr.TrackClient(cfg.Name, mc)
 		fmt.Printf("  ✅ [%s] 已加载 %d 个工具\n", mc.Name, len(tools))
 	}
 
@@ -451,6 +453,12 @@ func main() {
 		case "plan":
 			// Plan 模式：只读调研 → GeneratePlan → ReviewPlan → 审批 → ExecutePlan
 			goal := input
+
+			if !a.HasReadOnlyTools() {
+				fmt.Println("  ⚠️  当前没有可用的只读调研工具（如 read_file / grep / search_files 等），无法进入 Plan 模式。")
+				fmt.Println("  请先 /use default 恢复默认工具集，或安装带读工具的 Skill 后再试。")
+				continue
+			}
 
 			a.SetPlanMode(true)
 			fmt.Println("  📋 正在调研方案...（只读模式，不会修改代码）")

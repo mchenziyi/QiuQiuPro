@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // --------------- 文件读写 ---------------
@@ -25,7 +26,9 @@ func NewReadFileTool() Tool {
 		).Required("path"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Path string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			data, err := os.ReadFile(p.Path)
 			if err != nil {
 				return "", fmt.Errorf("读取 %s 失败", p.Path)
@@ -44,7 +47,9 @@ func NewWriteFileTool() Tool {
 		).Required("path", "content"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Path, Content string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if err := os.WriteFile(p.Path, []byte(p.Content), 0644); err != nil {
 				return "", fmt.Errorf("写入失败: %v", err)
 			}
@@ -61,7 +66,9 @@ func NewListDirectoryTool() Tool {
 		).Build(),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Path string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.Path == "" {
 				p.Path = "."
 			}
@@ -108,7 +115,9 @@ func NewEditFileTool() Tool {
 				OldString string `json:"old_string"`
 				NewString string `json:"new_string"`
 			}
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			b, err := os.ReadFile(p.Path)
 			if err != nil {
 				return "", fmt.Errorf("读取失败: %v", err)
@@ -160,7 +169,9 @@ func NewMultiEditTool() Tool {
 					ReplaceAll bool   `json:"replace_all"`
 				} `json:"edits"`
 			}
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			b, err := os.ReadFile(p.Path)
 			if err != nil {
 				return "", fmt.Errorf("读取失败: %v", err)
@@ -204,7 +215,9 @@ func NewDeleteRangeTool() Tool {
 				EndAnchor   string `json:"end_anchor"`
 				Inclusive   *bool  `json:"inclusive"`
 			}
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			inc := true
 			if p.Inclusive != nil {
 				inc = *p.Inclusive
@@ -266,7 +279,9 @@ func NewSearchFilesTool() Tool {
 		).Build(),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Pattern, Term string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.Pattern == "" && p.Term == "" {
 				return "", fmt.Errorf("需要 pattern 或 term")
 			}
@@ -300,7 +315,9 @@ func NewGlobTool() Tool {
 		).Required("pattern"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Pattern string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.Pattern == "" {
 				return "", fmt.Errorf("pattern required")
 			}
@@ -364,7 +381,9 @@ func NewGrepTool() Tool {
 		).Required("pattern"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Pattern, Path string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.Pattern == "" {
 				return "", fmt.Errorf("pattern required")
 			}
@@ -419,7 +438,9 @@ func NewCodeSearchTool() Tool {
 		).Required("symbol"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Symbol, Path string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			searchDir := p.Path
 			if searchDir == "" {
 				searchDir = "."
@@ -479,7 +500,9 @@ func NewTodoWriteTool() Tool {
 					Level                       int
 				}
 			}
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			var done, active, pending int
 			for _, t := range p.Todos {
 				switch t.Status {
@@ -515,7 +538,9 @@ func NewWebFetchTool() Tool {
 		).Required("url"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ URL string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.URL == "" {
 				return "", fmt.Errorf("url required")
 			}
@@ -540,7 +565,7 @@ func NewWebFetchTool() Tool {
 				out = stripHTML(out)
 			}
 			if len(out) > 16000 {
-				out = out[:16000] + "\n...(truncated)"
+				out = safeTruncate(out, 16000)
 			}
 			return fmt.Sprintf("HTTP %s\n%s", resp.Status, strings.TrimSpace(out)), nil
 		},
@@ -557,7 +582,9 @@ func NewGitCommitTool() Tool {
 		).Required("message"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Message string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			cmd := exec.CommandContext(ctx, "git", "add", "-A")
 			if out, err := cmd.CombinedOutput(); err != nil {
 				return fmt.Sprintf("git add failed: %s", out), err
@@ -580,7 +607,9 @@ func NewRunShellTool() Tool {
 		).Required("command"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct{ Command string }
-			json.Unmarshal(args, &p)
+			if err := json.Unmarshal(args, &p); err != nil {
+				return "", fmt.Errorf("参数解析失败：%v", err)
+			}
 			if p.Command == "" {
 				return "", fmt.Errorf("command required")
 			}
@@ -600,7 +629,7 @@ func NewRunShellTool() Tool {
 			}
 			output := string(out)
 			if len(output) > 32000 {
-				output = output[:32000] + "\n...(截断)"
+				output = safeTruncate(output, 32000)
 			}
 			return strings.TrimSpace(output), nil
 		},
@@ -643,4 +672,17 @@ func prop(name, typ, desc string) map[string]any {
 		p["description"] = desc
 	}
 	return map[string]any{name: p}
+}
+
+// safeTruncate 按字节截断字符串，同时保证不破坏 UTF-8 多字节字符边界。
+// 从 maxBytes 位置向前回退到有效的 rune 起始位置，确保返回的字符串合法。
+func safeTruncate(s string, maxBytes int) string {
+	if len(s) <= maxBytes {
+		return s
+	}
+	b := []byte(s)
+	for maxBytes > 0 && !utf8.RuneStart(b[maxBytes]) {
+		maxBytes--
+	}
+	return string(b[:maxBytes]) + "…(截断)"
 }

@@ -44,6 +44,14 @@ func Connect(name, command string, args ...string) (*MCPClient, error) {
 	return &MCPClient{Name: name, client: mcpClient}, nil
 }
 
+// Close 关闭 MCP 连接并终止子进程。
+func (c *MCPClient) Close() error {
+	if c.client != nil {
+		return c.client.Close()
+	}
+	return nil
+}
+
 // DiscoverTools 获取 Server 暴露的所有工具，包装成球球的 Tool 格式。
 // 工具名保持 MCP 原始名称，由 Agent.RegisterMCPTools 统一加 server 前缀。
 func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
@@ -69,7 +77,9 @@ func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
 			Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 				// 解析参数为 map
 				var params map[string]any
-				json.Unmarshal(args, &params)
+				if err := json.Unmarshal(args, &params); err != nil {
+					return "", fmt.Errorf("MCP 参数解析失败：%v", err)
+				}
 
 				// 调用 MCP 工具的 CallTool 方法
 				callReq := mcp.CallToolRequest{}

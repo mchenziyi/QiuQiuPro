@@ -50,6 +50,20 @@ func (a *Agent) availableTools() []tool.Tool {
 	return tools
 }
 
+// HasReadOnlyTools 检查当前是否有可用的只读工具，供 Plan 调研阶段使用。
+// remember_rule 是写工具，不计入。
+func (a *Agent) HasReadOnlyTools() bool {
+	for _, t := range a.allTools {
+		if t.Name == memoryToolName {
+			continue
+		}
+		if t.ReadOnly {
+			return true
+		}
+	}
+	return false
+}
+
 func (a *Agent) toolDefinitions() []openai.Tool {
 	tools := a.availableTools()
 	sort.Slice(tools, func(i, j int) bool { return tools[i].Name < tools[j].Name })

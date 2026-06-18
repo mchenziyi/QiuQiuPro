@@ -31,6 +31,7 @@ type Manager struct {
 	configPath string
 	connector  Connector
 	registrar  ToolRegistrar
+	clients    map[string]*MCPClient
 }
 
 // NewManager creates an MCP Manager.
@@ -42,6 +43,7 @@ func NewManager(configPath string, connector Connector, registrar ToolRegistrar)
 		configPath: configPath,
 		connector:  connector,
 		registrar:  registrar,
+		clients:    make(map[string]*MCPClient),
 	}
 	m.configs = m.loadConfigs()
 	return m
@@ -125,6 +127,12 @@ func (m *Manager) Refresh(name string) (int, error) {
 }
 
 func (m *Manager) connectDiscoverRegisterLocked(cfg Config) (int, error) {
+	// 关闭旧连接（如有），避免子进程泄漏
+	if old, ok := m.clients[cfg.Name]; ok {
+		old.Close()
+		delete(m.clients, cfg.Name)
+	}
+
 	mc, err := m.connector(cfg.Name, cfg.Command, cfg.Args...)
 	if err != nil {
 		return 0, fmt.Errorf("连接 MCP Server 失败：%w", err)
@@ -134,7 +142,20 @@ func (m *Manager) connectDiscoverRegisterLocked(cfg Config) (int, error) {
 		return 0, fmt.Errorf("发现工具失败：%w", err)
 	}
 	m.registrar(mc.Name, tools)
+	m.clients[cfg.Name] = mc
 	return len(tools), nil
+}
+
+// TrackClient 注册一个外部创建的 MCP 客户端，使 Manager 可追踪其生命周期。
+// 用于 main.go 启动时直接调用 mcp.Connect 创建的连接。
+// 如果已存在同名客户端，会先关闭旧的。
+func (m *Manager) TrackClient(name string, client *MCPClient) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if old, ok := m.clients[name]; ok {
+		old.Close()
+	}
+	m.clients[name] = client
 }
 
 func npmToName(pkg string) string {
