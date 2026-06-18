@@ -14,13 +14,18 @@ import (
 // 默认实现走真实 LLM（llmSummarize），测试可替换成桩函数，无需联网。
 type summarizeFunc func(ctx context.Context, msgs []openai.ChatCompletionMessage) (string, error)
 
-// 压缩触发参数（对齐 Reasonix 默认值）。
+// 压缩触发参数。
+//
+// 缓存策略：DeepSeek 缓存命中与未命中价差可达 50~120 倍。
+// 任何对对话历史的修改（prune / compact）都会碎掉从修改位置往后的全部缓存，
+// 因此运行时尽可能不动历史。自动压缩阈值推到极高位，只在真要撑爆窗口时才触发。
+// 用户主动 /compact 不受此限制。
 const (
 	defaultContextWindow = 1_000_000
-	defaultCompactRatio  = 0.8
-	defaultSoftRatio     = 0.5
-	defaultCompactForce  = 0.9
-	defaultCompactTarget = 0.5
+	defaultCompactRatio  = 0.95  // 95% 窗口时才触发自动压缩——低位压缩省了体积却碎了缓存，得不偿失
+	defaultSoftRatio     = 0.85  // 85% 时友好提醒，但不操作
+	defaultCompactForce  = 0.98  // 98% 高水位强制压缩——再不动真要爆了
+	defaultCompactTarget = 0.5   // 压缩后目标窗口占比（压缩时用）
 	maxTailTokens        = 16384
 	minCompactMessages   = 2
 	fallbackTokPerChar   = 0.25
@@ -35,7 +40,9 @@ const (
 // cacheColdAfter：会话 idle 超过此时间后恢复时 prune 陈旧 tool 结果（对齐 Reasonix）。
 const cacheColdAfter = 24 * time.Hour
 
-// maybeCompact 在 prompt 逼近窗口时才压缩；压缩前先尝试 prune（对齐 Reasonix）。
+// maybeCompact 在 prompt 逼近窗口极限时才压缩。
+// 不先做 prune——prune 也会碎缓存。宁可硬扛到压缩水位再一次性 compact，
+// 也比提前用 prune 碎片化地破坏缓存更省钱。
 func (a *Agent) maybeCompact(ctx context.Context, usage openai.Usage) {
 	if a.contextWindow <= 0 || usage.PromptTokens == 0 {
 		return
@@ -62,14 +69,8 @@ func (a *Agent) maybeCompact(ctx context.Context, usage openai.Usage) {
 		return
 	}
 	force := promptTokens >= int(float64(a.contextWindow)*a.compactForceRatio)
-	ratio := a.tokPerChar()
-	if st, err := a.PruneStaleToolResults(); err == nil && st.Results > 0 {
-		saved := int(float64(st.SavedChars) * ratio)
-		a.noticef("  ✂️  裁剪 %d 条陈旧 tool 结果（约 %d token），优先保前缀缓存\n", st.Results, saved)
-		if !force && promptTokens-saved < high {
-			return
-		}
-	}
+	// 不先 prune：prune 也会碎缓存，且节约的 token 不足以抵消后续的缓存未命中成本。
+	// 到达此水位直接 compact，一次性解决问题。
 	if err := a.compact(ctx, false, force); err != nil {
 		a.noticef("  🗜️  压缩跳过：%v\n", err)
 		return
