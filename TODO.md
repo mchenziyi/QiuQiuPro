@@ -27,16 +27,20 @@
       - `Manager.Refresh()` 时关闭旧连接再建新连接
       - `main.go` 启动时发现的工具注册后释放连接（或改为延迟连接）
         - 当前每次启动为每个 MCP Server 创建 `MCPClient` 发现工具后丢弃，子进程永久驻留
+      - 注意：如果注册后的 MCP 工具执行仍依赖同一个 client，不能发现后直接关闭；
+        需要在“长期持有连接 + Close”与“延迟连接/按调用临时连接”之间先定方案。
 
 ### -- Agent 稳定性 --
 
 - [ ] **Plan mode 只读工具为空时死循环保护**
       当 `availableTools()` 中没有 ReadOnly 工具时，Plan 调研阶段 LLM 反复尝试写工具→被拒→再试。
       方案：调研前检查可用读工具数量，为 0 时提示用户安装读工具或切换模式。
+      注意 `remember_rule` 是写记忆工具，不应计入可用只读调研工具。
 
 - [ ] **工具输出截断的 UTF-8 安全**
-      `bash` 工具 32KB 截断（`all_tools.go:601`）和 `web_fetch` 工具 16000 字节截断（`all_tools.go:543`）
-      可能从多字节字符中间切分，发给 LLM 的 content 含非法 UTF-8。
+      `bash` 工具 32KB 截断和长文本工具输出截断可能从多字节字符中间切分，
+      发给 LLM 的 content 含非法 UTF-8。
+      执行前先以当前代码为准搜索所有 `truncate` / `LimitReader` / 固定长度切片点，避免依赖易漂移行号。
       方案：截断时按 rune 边界回退，保证合法 UTF-8。
 
 ---
@@ -56,10 +60,11 @@
       - UI 可展示当前可用工具和描述
 
 - [ ] **暴露关键状态 Getter**
-      - `Agent.Usage() TokenUsage` — Token 用量
+      - `Agent.Usage() TokenUsage` — 已有
       - `Agent.CurrentSkill() *skill.Skill` — 当前人格
       - `Agent.IsPlanMode() bool` — 是否规划调研中
       - `Agent.SessionID() string` — 已有
+      - 执行时只补缺失 Getter，避免重复实现已有方法。
 
 ### -- 控制接口 --
 
@@ -83,10 +88,12 @@
 - [ ] **`session.messages` 并发保护**
       当前架构串行访问不出问题，但 `messages` 裸 slice 无锁且 `Messages()` 返回内部引用。
       方案：加 `sync.RWMutex`，`Messages()` 返回深拷贝。
+      一旦开始做 UI / `RunTurn` / 后台任务，这项应提升到第二层必做。
 
 - [ ] **`allTools` map 并发保护**
       当前热安装/刷新与工具执行在同一 goroutine 串行发生，但代码不防未来。
       方案：换成 `sync.Map` 或加 `sync.RWMutex`。
+      如果 UI 支持运行中安装 Skill/MCP 或刷新工具，这项应提升到第二层必做。
 
 - [ ] **`web_fetch` HTTP Client 复用**
       每次调用新建 `http.Client`，高频抓取时浪费连接。
@@ -97,6 +104,10 @@
       `Load()` 中 `json.Unmarshal` 错误被忽略。
 
 - [ ] **`SaveCheckpoint` 中 `session.Snapshot()` 错误被忽略**
+
+- [ ] **文档中的旧工具名同步**
+      README / STRUCTURES / 历史 docs 中可能仍有 `list_directory`、`run_shell`、`run_powershell`
+      等旧工具名或旧文件结构说明。实现 UI 前统一校准文档，避免用户按旧名称测试。
 
 ---
 
