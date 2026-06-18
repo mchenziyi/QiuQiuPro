@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -162,7 +163,6 @@ func (m *Manager) persistLocked() error {
 	if err != nil {
 		return err
 	}
-	dir := m.configPath[:strings.LastIndex(m.configPath, "/")]
-	os.MkdirAll(dir, 0755)
+	os.MkdirAll(filepath.Dir(m.configPath), 0755)
 	return os.WriteFile(m.configPath, data, 0644)
 }

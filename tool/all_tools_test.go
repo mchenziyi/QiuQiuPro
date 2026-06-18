@@ -10,13 +10,17 @@ import (
 	"testing"
 )
 
+// toSlash 将路径中的反斜杠转为正斜杠，使路径可安全嵌入 JSON 字符串。
+// Go 的文件 API 在 Windows 上也接受正斜杠，因此这是安全的。
+func toSlash(p string) string { return filepath.ToSlash(p) }
+
 func TestEditFileTool_UniqueReplace(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "edit.txt")
 	os.WriteFile(path, []byte("hello world"), 0644)
 
 	_, err := NewEditFileTool().Execute(context.Background(), json.RawMessage(
-		`{"path":"`+path+`","old_string":"world","new_string":"qiuqiu"}`,
+		`{"path":"`+toSlash(path)+`","old_string":"world","new_string":"qiuqiu"}`,
 	))
 	if err != nil {
 		t.Fatalf("edit_file: %v", err)
@@ -33,7 +37,7 @@ func TestMultiEditTool_BatchReplace(t *testing.T) {
 	os.WriteFile(path, []byte("one two three"), 0644)
 
 	_, err := NewMultiEditTool().Execute(context.Background(), json.RawMessage(
-		`{"path":"`+path+`","edits":[{"old_string":"one","new_string":"1"},{"old_string":"two","new_string":"2"},{"old_string":"three","new_string":"3"}]}`,
+		`{"path":"`+toSlash(path)+`","edits":[{"old_string":"one","new_string":"1"},{"old_string":"two","new_string":"2"},{"old_string":"three","new_string":"3"}]}`,
 	))
 	if err != nil {
 		t.Fatalf("multi_edit: %v", err)
@@ -50,7 +54,7 @@ func TestMultiEditTool_ReplaceAll(t *testing.T) {
 	os.WriteFile(path, []byte("aa bb aa"), 0644)
 
 	_, err := NewMultiEditTool().Execute(context.Background(), json.RawMessage(
-		`{"path":"`+path+`","edits":[{"old_string":"aa","new_string":"x","replace_all":true}]}`,
+		`{"path":"`+toSlash(path)+`","edits":[{"old_string":"aa","new_string":"x","replace_all":true}]}`,
 	))
 	if err != nil {
 		t.Fatalf("multi_edit replace_all: %v", err)
@@ -67,7 +71,7 @@ func TestDeleteRangeTool_Inclusive(t *testing.T) {
 	os.WriteFile(path, []byte("line1\nstart\nmid\nend\nline5"), 0644)
 
 	_, err := NewDeleteRangeTool().Execute(context.Background(), json.RawMessage(
-		`{"path":"`+path+`","start_anchor":"start","end_anchor":"end","inclusive":true}`,
+		`{"path":"`+toSlash(path)+`","start_anchor":"start","end_anchor":"end","inclusive":true}`,
 	))
 	if err != nil {
 		t.Fatalf("delete_range inclusive: %v", err)
@@ -84,7 +88,7 @@ func TestDeleteRangeTool_Exclusive(t *testing.T) {
 	os.WriteFile(path, []byte("line1\nstart\nmid\nend\nline5"), 0644)
 
 	_, err := NewDeleteRangeTool().Execute(context.Background(), json.RawMessage(
-		`{"path":"`+path+`","start_anchor":"start","end_anchor":"end","inclusive":false}`,
+		`{"path":"`+toSlash(path)+`","start_anchor":"start","end_anchor":"end","inclusive":false}`,
 	))
 	if err != nil {
 		t.Fatalf("delete_range exclusive: %v", err)
@@ -103,7 +107,7 @@ func TestGrepTool_SkipsHiddenDirs(t *testing.T) {
 	os.WriteFile(filepath.Join(hiddenDir, "hidden.txt"), []byte("func SetPlanMode() {}"), 0644)
 
 	out, err := NewGrepTool().Execute(context.Background(), json.RawMessage(
-		`{"pattern":"SetPlanMode","path":"`+dir+`"}`,
+		`{"pattern":"SetPlanMode","path":"`+toSlash(dir)+`"}`,
 	))
 	if err != nil {
 		t.Fatalf("grep: %v", err)
