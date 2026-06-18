@@ -8,3 +8,4 @@ output/
 *.jsonl
 
 agentdemo.exe
+agentdemo_build.exe
