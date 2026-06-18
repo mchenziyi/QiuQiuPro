@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -181,8 +182,7 @@ func (a *Agent) executePlanFrom(ctx context.Context, plan *Plan, start int) erro
 			Status:        ExecutionRunning,
 		})
 		a.debugf("\n  📋 [%d/%d] %s\n", i+1, len(plan.Steps), step.Desc)
-		_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", step.Desc))
-		if err != nil {
+		if err := a.runPlanStep(ctx, step.Desc); err != nil {
 			step.Status = "failed"
 			a.noticef("  ❌ [%d/%d] 失败：%v\n", i+1, len(plan.Steps), err)
 
@@ -219,6 +219,35 @@ func (a *Agent) executePlanFrom(ctx context.Context, plan *Plan, start int) erro
 	}
 	_ = a.ClearExecutionState()
 	return nil
+}
+
+// runPlanStep 执行 Plan 中的一步。Run 虽正常返回，但步骤内若有工具报错（如 read_file 失败），
+// 仍视为 step 失败，从而触发 Reflect / RePlan。
+func (a *Agent) runPlanStep(ctx context.Context, desc string) error {
+	before := a.session.Len()
+	_, err := a.Run(ctx, fmt.Sprintf("请执行：%s", desc))
+	if err != nil {
+		return err
+	}
+	if msg := a.planStepToolFailure(before); msg != "" {
+		return errors.New(msg)
+	}
+	return nil
+}
+
+// planStepToolFailure 检查自 since 以来 session 中是否出现工具错误结果。
+func (a *Agent) planStepToolFailure(since int) string {
+	msgs := a.session.Messages()
+	if since < 0 || since > len(msgs) {
+		since = 0
+	}
+	var last string
+	for _, m := range msgs[since:] {
+		if m.Role == "tool" && isErrorResult(m.Content) {
+			last = strings.TrimSpace(m.Content)
+		}
+	}
+	return last
 }
 
 // Reflect 让 LLM 分析失败原因，输出反思

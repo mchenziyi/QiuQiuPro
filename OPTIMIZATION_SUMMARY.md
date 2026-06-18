@@ -14,8 +14,8 @@
 | 3 | **API Key 自动保存** | `main.go → getAPIKey()` | 首次使用在终端输入 Key，自动保存到 `~/.qiuqiu/key`，后续免配置 | ✅ |
 | 4 | **Plan 自我审视** | `agent/plan.go → ReviewPlan()` | LLM 拆完步骤后自己检查一遍，漏步骤或顺序不对时自动修正 | ✅ |
 | 5 | **动态重规划** | `agent/plan.go → RePlan()` | 执行中某步失败，LLM 根据已完成内容重新规划剩余步骤并继续执行 | ✅ |
-| 6 | **MCP 可配置** | `main.go → loadMCPConfigs()` | MCP Server 从 `~/.qiuqiu/mcp_servers.json` 读取，改配置不用改代码 | ✅ |
-| 7 | **Skill 外部加载** | `skill/skill.go → LoadFromDir()` | `~/.qiuqiu/skills/*.json` 启动时自动加载为 Skill | ✅ |
+| 6 | **MCP 可配置 / 热安装** | `mcp/manager.go` + `agent/install_tools.go` | MCP Server 从 `~/.qiuqiu/mcp_servers.json` 读取，也可让 Agent 通过 `install_mcp` 安装并立即注册工具；项目初始化后可用 `refresh_mcp` 重连刷新 | ✅ |
+| 7 | **Skill 外部加载 / 热安装 / 删除** | `skill/manager.go` + `agent/install_tools.go` | `~/.qiuqiu/skills/*.json` 启动时加载；Agent 可通过 `install_skill` 安装 JSON 或 `SKILL.md` 并立即 `/use`，也可通过 `delete_skill` 删除外部 Skill | ✅ |
 | 8 | **Glob + Grep 工具** | `tool/glob_tools.go` + `tool/grep_tools.go` | 把搜索拆为两个独立工具，LLM 更容易选对 | ✅ |
 | 9 | **安全拦截防线** | `agent/agent.go` + `agent/run.go` | 高危工具（写文件/执行命令）执行前弹 `[Y/n]` 确认 | ✅ |
 | 10 | **斜杠命令系统** | `command/registry.go` | `/help`、`/explain`、`/test`、`/use`、`/replay` 可扩展命令 | ✅ |
@@ -86,7 +86,9 @@ D:\QiuQiuPro\
 │
 ├── event/store.go             ← Event Sourcing（JSON Lines）
 ├── mcp/client.go              ← MCP 协议客户端
-├── skill/skill.go             ← Skill 定义 + 内置 + 外部加载
+├── mcp/manager.go             ← MCP 配置读写 + 热安装 + 热注册
+├── skill/skill.go             ← Skill 定义 + JSON 加载
+├── skill/manager.go           ← Skill 外部加载 + 热安装
 ├── .gitignore / go.mod / go.sum
 └── OPTIMIZATION_SUMMARY.md
 ```
@@ -100,8 +102,8 @@ D:\QiuQiuPro\
 | 文件 | 用途 | 自动创建？ |
 |------|------|-----------|
 | `~/.qiuqiu/key` | API Key | ✅ 首次输入时自动创建 |
-| `~/.qiuqiu/mcp_servers.json` | MCP Server 列表 | ❌ 需要手动创建（有示例） |
-| `~/.qiuqiu/skills/*.json` | 外部 Skill | ❌ 手动放入 `.json` 文件 |
+| `~/.qiuqiu/mcp_servers.json` | MCP Server 列表 | ✅ 可由 `install_mcp` 自动创建，也可手动维护；当前进程可通过 `refresh_mcp` 刷新 |
+| `~/.qiuqiu/skills/*.json` | 外部 Skill | ✅ 可由 `install_skill` 自动创建，也可手动放入 `.json` 文件；可由 `delete_skill` 删除 |
 
 ---
 
@@ -116,4 +118,4 @@ D:\QiuQiuPro\
 | Tool 自动重试 | 工具调用失败自动重试 1-2 次 | ⭐⭐ |
 | Git Worktree 隔离 | 代码修改在隔离分支进行，不污染工作区 | ⭐⭐ |
 | SubAgent | 主 Agent 派生子 Agent 并行执行独立子任务 | ⭐⭐ |
-| Skill 从 URL 加载 | `LoadFromURL()` 实现 | ⭐ |
+| Skill 安装源扩展 | 已支持 JSON / SKILL.md / 本地路径 / URL；后续可补更丰富的市场/索引协议 | ⭐ |

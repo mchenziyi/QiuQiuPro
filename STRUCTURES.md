@@ -56,7 +56,7 @@ type Event struct {
 
 ---
 
-## mcp 包 — 你只需要懂这两个结构
+## mcp 包 — MCP 连接与热安装
 
 ```go
 // MCPClient 包装一个外部 MCP Server 的连接
@@ -72,14 +72,16 @@ type MCPClient struct {
 |------|------|
 | `Connect(name, command, args...)` | 启动外部进程，建立 MCP 连接 |
 | `DiscoverTools()` | 让 Server 返回所有工具，包装成 tool.Tool 格式 |
+| `Manager.Install(config, overwrite)` | 写入 `~/.qiuqiu/mcp_servers.json`，立即连接并注册工具 |
+| `Manager.InstallFromNpm(pkg, extraArgs, overwrite)` | 把 npm 包快捷展开为 `npx -y <pkg> ...` 并安装 |
 
-**设计意图：** 外部工具即插即用，不改代码，不重新编译。
+**设计意图：** 外部工具即插即用，不改代码，不重新编译；现在也支持对话里让 Agent 安装后立即可用。
 
 **通信方式：** JSON-RPC over stdio（标准输入输出传 JSON 消息）。
 
 ---
 
-## skill 包 — 你只需要懂这一个结构体
+## skill 包 — Skill 定义与热安装
 
 ```go
 type Skill struct {
@@ -102,7 +104,12 @@ type Rule struct {
 
 | 函数 | 作用 |
 |------|------|
-| `AllBuiltInSkills()` | 返回所有内置 Skill 列表 |
+| `LoadFromFile(path)` | 从 JSON 文件解析一个 Skill |
+| `LoadFromDir(dir)` | 扫描目录下的 `.json` Skill |
+| `Manager.List()` | 返回当前进程可用 Skill 列表 |
+| `Manager.Find(name)` | 按名称查找 Skill，供 `/use` 动态切换 |
+| `Manager.InstallFromJSON/Markdown/Path/URL(...)` | 安装到 `~/.qiuqiu/skills/<name>.json` 并热加载；`path/url` 自动识别 JSON 或 `SKILL.md` |
+| `Manager.Delete(name)` | 删除外部安装的 Skill；内置 Skill 不允许删除 |
 
 ---
 
@@ -129,8 +136,13 @@ type Agent struct {
 | `New(apiKey, model)` | 创建 Agent 实例 | - |
 | `RegisterTool(t)` | 注册工具到 allTools | V0 |
 | `RegisterTools(tools)` | 批量注册 | V0 |
-| `RegisterMCPTools(prefix, tools)` | 注册 MCP 工具（加前缀） | V4 |
+| `RegisterMCPTools(prefix, tools)` | 注册 MCP 工具（按需加前缀，避免双前缀） | V4 |
 | `ApplySkill(s)` | 切换 Skill：换 SystemPrompt + 限制工具 | V5 |
+| `ClearSkill()` | 恢复 default 人格与全量工具 | V5 |
+| `NewInstallSkillTool(manager)` | 注册 `install_skill`，让模型安装 Skill | V5 |
+| `NewDeleteSkillTool(manager)` | 注册 `delete_skill`，让模型卸载外部 Skill | V5 |
+| `NewInstallMCPTool(manager)` | 注册 `install_mcp`，让模型安装 MCP Server | V5 |
+| `NewRefreshMCPTool(manager)` | 注册 `refresh_mcp`，让模型刷新已安装 MCP 的工具列表 | V5 |
 | `Run(ctx, input)` | **核心循环**：调 LLM → 执行 ToolCall → 再调 LLM → 直到返回 | V0 |
 | `GeneratePlan(ctx, goal)` | 让 LLM 拆解目标为步骤列表 | V1 |
 | `ExecutePlan(ctx, plan)` | 按顺序执行每一步 | V1 |

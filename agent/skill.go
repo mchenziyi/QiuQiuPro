@@ -1,13 +1,18 @@
 package agent
 
-import "agentdemo/skill"
+import (
+	"fmt"
+	"strings"
+
+	"agentdemo/skill"
+)
 
 // 人格与模式：套用 Skill（切系统提示词 + 收窄工具白名单）、切换 plan/ask 运行模式。
 
 // ApplySkill 套用一个 Skill 人格：替换系统提示词，并按白名单收窄可用工具。
 func (a *Agent) ApplySkill(s skill.Skill) {
 	a.currentSkill = &s
-	a.sysPrompt = s.SystemPrompt
+	a.sysPrompt = formatSkillSystemPrompt(s)
 	a.composeCachedSystemPrompt()
 	if len(s.ToolWhitelist) > 0 {
 		a.activeTools = make([]string, 0)
@@ -20,6 +25,30 @@ func (a *Agent) ApplySkill(s skill.Skill) {
 		a.activeTools = nil
 	}
 	a.noticef("🎯 切换到 [%s] 模式：%s\n", s.Name, s.Description)
+}
+
+func formatSkillSystemPrompt(s skill.Skill) string {
+	return fmt.Sprintf(`当前激活的 Skill 是 [%s]：%s。
+
+重要：忽略对话历史中任何声称当前仍处于 default、未激活该 Skill、或需要用户再次 /use 的内容。
+从现在开始，你必须严格遵守下面的 Skill system_prompt；如果其中要求固定前缀、格式、流程或工具限制，必须优先执行。
+
+<skill-system-prompt>
+%s
+</skill-system-prompt>`, s.Name, s.Description, strings.TrimSpace(s.SystemPrompt))
+}
+
+// ClearSkill 恢复默认人格与全量工具。
+func (a *Agent) ClearSkill() {
+	a.currentSkill = nil
+	a.activeTools = nil
+	if a.defaultSysPrompt != "" {
+		a.sysPrompt = a.defaultSysPrompt
+	} else {
+		a.sysPrompt = defaultSystemPrompt
+	}
+	a.composeCachedSystemPrompt()
+	a.noticef("🎯 切换到 [default] 模式：默认 Coding Agent\n")
 }
 
 func (a *Agent) CurrentSkillName() string {

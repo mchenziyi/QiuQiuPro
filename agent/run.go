@@ -13,11 +13,15 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// ErrInterrupted 表示用户按 Ctrl+C 协作式中断了当前 Run，会话本身继续。
+var ErrInterrupted = errors.New("操作已中断")
+
 // Run 处理一轮用户输入——Agent 核心循环（无硬上限，由风暴检测兜底）
 func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	userInput = a.composeUserTurn(userInput)
 	a.recordEvent("user", userInput, "")
 
+	sessionStart := a.session.Len()
 	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: userInput})
 
 	usageBefore := a.usage
@@ -28,6 +32,10 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 	a.stormCount = 0
 
 	for {
+		if err := a.checkInterrupted(sessionStart); err != nil {
+			return "", err
+		}
+
 		prevShape := a.lastPrefixShape
 		if !a.haveLastPrefixShape {
 			prevShape = a.capturePrefixShape()
@@ -35,6 +43,9 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		curShape := a.capturePrefixShape()
 
 		msg, usage, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
+		if errors.Is(err, ErrInterrupted) {
+			return "", a.abortRun(sessionStart)
+		}
 		if err != nil {
 			a.recordEvent("error", err.Error(), "")
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
@@ -62,6 +73,9 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 
 		// 执行工具 + 风暴检测
+		if err := a.checkInterrupted(sessionStart); err != nil {
+			return "", err
+		}
 		results, storm := a.dispatchAndDetect(ctx, msg.ToolCalls)
 		if storm != "" {
 			a.recordEvent("loop_guard", storm, "")
@@ -74,14 +88,48 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 }
 
 // Interrupt 中断当前 Run：设置 interrupted 标志。ReadLine 检测到后重置并继续等待输入，
-// Run 循环检测到后停止当前操作并返回。
+// Run 循环 / 流式输出检测到后停止当前操作并返回 ErrInterrupted。
 func (a *Agent) Interrupt() {
 	atomic.StoreInt32(&a.interrupted, 1)
+}
+
+func (a *Agent) takeInterrupt() bool {
+	return atomic.SwapInt32(&a.interrupted, 0) == 1
+}
+
+func (a *Agent) checkInterrupted(sessionStart int) error {
+	if !a.takeInterrupt() {
+		return nil
+	}
+	return a.abortRun(sessionStart)
+}
+
+// abortRun 撤销本轮 Run 写入 session 的消息，避免中断后下一句被当成「继续上一任务」。
+func (a *Agent) abortRun(sessionStart int) error {
+	a.truncateSession(sessionStart)
+	a.SaveCheckpoint()
+	return ErrInterrupted
+}
+
+func (a *Agent) truncateSession(toLen int) {
+	msgs := a.session.Messages()
+	if toLen < 0 {
+		toLen = 0
+	}
+	if toLen >= len(msgs) {
+		return
+	}
+	a.session.Replace(msgs[:toLen])
 }
 
 // dispatchAndDetect 执行工具调用并做风暴检测：连续 3 次同样的工具以同样的错误失败时，
 // 不再回灌原始错误给 LLM，而是注入 [loop guard] 指令让它换方案。
 func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCall) ([]string, string) {
+	if a.takeInterrupt() {
+		atomic.StoreInt32(&a.interrupted, 1)
+		return []string{"操作已中断"}, ""
+	}
+
 	results := make([]string, len(toolCalls))
 
 	for _, tc := range toolCalls {
@@ -102,6 +150,10 @@ func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCa
 	}
 
 	for i, tc := range toolCalls {
+		if a.takeInterrupt() {
+			atomic.StoreInt32(&a.interrupted, 1)
+			break
+		}
 		if a.canRunParallel(tc) {
 			continue
 		}
@@ -247,6 +299,11 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 		}
 	}
 
+	if a.takeInterrupt() {
+		atomic.StoreInt32(&a.interrupted, 1)
+		return fmt.Sprintf("用户已中断 %s", tc.Function.Name)
+	}
+
 	result, execErr := t.Execute(ctx, json.RawMessage(tc.Function.Arguments))
 	if execErr != nil {
 		if result != "" {
@@ -278,6 +335,11 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	toolCallAcc := make(map[int]openai.ToolCall)
 
 	for {
+		if a.takeInterrupt() {
+			stream.Close()
+			return openai.ChatCompletionMessage{}, openai.Usage{}, ErrInterrupted
+		}
+
 		resp, err := stream.Recv()
 		if errors.Is(err, io.EOF) {
 			break

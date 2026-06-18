@@ -18,15 +18,23 @@ func (a *Agent) stdin() *bufio.Reader {
 
 func (a *Agent) SetInput(r *bufio.Reader) { a.in = r }
 
-// ReadLine 从统一输入流读取一行。按下 Ctrl+C 时 ReadString 返回错误，
-// 检查 interrupted 标记——若为 1 则重置并继续等待输入，不会被当成 EOF。
+// ReadLine 从统一输入流读取一行（主循环用）。
+// Ctrl+C 时不会退出进程，而是提示后重新等待输入。
 func (a *Agent) ReadLine() (string, bool) {
+	return a.readLine(false)
+}
+
+func (a *Agent) readLine(cancelOnInterrupt bool) (string, bool) {
 	for {
 		line, err := a.stdin().ReadString('\n')
 		line = strings.TrimRight(line, "\r\n")
 		if err != nil {
-			if atomic.LoadInt32(&a.interrupted) == 1 {
+			if atomic.LoadInt32(&a.interrupted) != 0 {
 				atomic.StoreInt32(&a.interrupted, 0)
+				if cancelOnInterrupt {
+					return "", false
+				}
+				a.noticef("\n  ⚡ 已中断\n")
 				continue
 			}
 			if line == "" {
@@ -38,7 +46,7 @@ func (a *Agent) ReadLine() (string, bool) {
 }
 
 func (a *Agent) confirm() bool {
-	line, ok := a.ReadLine()
+	line, ok := a.readLine(true)
 	if !ok {
 		return false
 	}

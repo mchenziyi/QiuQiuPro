@@ -84,7 +84,7 @@ Input:
 
 			// 读取用户输入
 			a.emitPrompt("")
-			line, ok := a.ReadLine()
+			line, ok := a.readLine(true)
 			if !ok {
 				return "cancelled (EOF)", nil
 			}

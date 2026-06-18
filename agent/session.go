@@ -6,6 +6,10 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
+// apiEmptyContentPlaceholder 发往 LLM 时，空 tool/assistant 结果的占位 content。
+// go-openai 对 "" 使用 omitempty，DeepSeek 等提供方仍要求 JSON 里必须有 content 字段。
+const apiEmptyContentPlaceholder = "ok"
+
 // Session 持有一轮会话的状态：会话 ID + 对话历史（唯一事实源）+ 大小管理。
 //
 // 历史只含 user / assistant / tool 三类消息；system 提示词不在此（由 Agent 持有、
@@ -41,7 +45,24 @@ func (s *Session) BuildRequest(sysPrompt string) []openai.ChatCompletionMessage 
 	if sysPrompt != "" {
 		req = append(req, openai.ChatCompletionMessage{Role: "system", Content: sysPrompt})
 	}
-	return append(req, s.messages...)
+	for _, m := range s.messages {
+		req = append(req, ensureAPIContent(m))
+	}
+	return req
+}
+
+func ensureAPIContent(m openai.ChatCompletionMessage) openai.ChatCompletionMessage {
+	if m.Content != "" {
+		return m
+	}
+	switch m.Role {
+	case "tool", "assistant":
+		out := m
+		out.Content = apiEmptyContentPlaceholder
+		return out
+	default:
+		return m
+	}
 }
 
 // Trim 截断历史到最多 maxMessages 条。

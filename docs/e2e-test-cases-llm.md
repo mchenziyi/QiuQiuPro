@@ -259,7 +259,7 @@ exit
 
 ---
 
-## 四、Skill（5 条）
+## 四、Skill（9 条）
 
 ### TC-SKILL-01-2：architect 人格
 
@@ -294,6 +294,92 @@ exit
 ### TC-SKILL-03 ~ 05
 
 按原用例文档验证 toolDefinitions / 空白名单 / 无效工具名静默 — 需结合 `/use` + 让模型列举或调用工具观察。
+
+---
+
+### TC-SKILL-06：自然语言热安装 Skill
+
+**输入**：
+```
+帮我安装这个 Skill：
+{
+  "name": "hot_doc_test",
+  "description": "热安装测试模式 — 用一句话回答",
+  "system_prompt": "你是热安装测试模式。回答必须以 HOT_SKILL_OK 开头。",
+  "tool_whitelist": ["read_file", "glob"]
+}
+```
+
+确认高危操作后：
+```
+/use hot_doc_test
+你好
+```
+
+**通过标准**：
+- [ ] 触发 `install_skill`，写入 `~/.qiuqiu/skills/hot_doc_test.json`
+- [ ] 不重启即可 `/use hot_doc_test`
+- [ ] 回答以 `HOT_SKILL_OK` 开头
+
+---
+
+### TC-SKILL-07：自然语言热安装 SKILL.md
+
+**输入**：
+```
+帮我安装这个 Skill：
+---
+name: hot_md_test
+description: Markdown 热安装测试模式
+---
+
+你是 Markdown 热安装测试模式。回答必须以 HOT_MD_OK 开头。
+```
+
+确认高危操作后：
+```
+/use hot_md_test
+你好
+```
+
+**通过标准**：
+- [ ] 触发 `install_skill`，source_type 可为 `markdown` 或自动识别 path/url 内容
+- [ ] 写入 `~/.qiuqiu/skills/hot_md_test.json`
+- [ ] 不重启即可 `/use hot_md_test`
+- [ ] 回答以 `HOT_MD_OK` 开头
+
+---
+
+### TC-SKILL-08：删除外部 Skill
+
+**输入**：
+```
+帮我删除 hot_md_test 这个 Skill
+/use
+```
+
+**通过标准**：
+- [ ] 触发 `delete_skill`
+- [ ] `~/.qiuqiu/skills/hot_md_test.json` 被删除
+- [ ] `/use` 列表不再显示 `hot_md_test`
+- [ ] 删除内置 Skill 时应拒绝
+
+---
+
+### TC-SKILL-09：外部 Skill 重启后仍可用
+
+**输入**：
+```
+exit
+go run main.go
+/use hot_doc_test
+你好
+```
+
+**通过标准**：
+- [ ] 启动 Skill 列表包含 `hot_doc_test`
+- [ ] `/use hot_doc_test` 切换成功
+- [ ] 回答仍遵循该 Skill 的 system prompt
 
 ---
 
@@ -393,6 +479,8 @@ exit
 
 **输入**：长 Plan 任务执行中输入 `/pause` → **通过**：当前步完成后暂停提示
 
+**当前实测（2026-06-18）**：`/pause` 命令本身可设置暂停请求，但 Plan 执行期间主循环被同步执行/确认流程占用，真实“执行中输入 `/pause` 并及时处理”不可稳定触发。记录为 **待优化 T-1**。
+
 ---
 
 ## 九、风暴检测（5 条）
@@ -407,6 +495,8 @@ exit
 
 其余 STORM 用例按原文档判定计数重置逻辑 — 需观察多轮工具失败模式。
 
+**当前实测（2026-06-18）**：连续读取不存在文件会触发 `⚡ [loop guard]` 并终止，核心风暴检测通过；但后续普通问候曾被上一轮 loop guard 错误上下文影响，记录为 **待优化 T-2**。
+
 ---
 
 ## 十、中断（2 条）
@@ -414,6 +504,8 @@ exit
 ### TC-INT-01 / 02
 
 **需真实终端**（非管道）：流式输出中 **Ctrl+C** → 回到提示符 → 再输入 `你好` 正常回复
+
+**当前实测（2026-06-18）**：`Ctrl+C` 可中断流式输出并回到提示符；后续会话继续可用。若上一轮刚触发 loop guard，普通输入可能受残留错误上下文影响（见 T-2）。
 
 ---
 
@@ -427,7 +519,7 @@ exit
 
 **输入**：让模型连续调用 ≥5 次只读工具 → ckpt 更新
 
-### TC-CKPT-04：跨重启恢复（**当前已知 FAIL**）
+### TC-CKPT-04：跨重启恢复
 
 **步骤**：
 1. 对话：`我叫李四` → `exit`
@@ -438,7 +530,7 @@ exit
 - [ ] 启动时 `💾 从快照恢复 N 条消息`
 - [ ] 回答「李四」
 
-**当前实际**：session ID 每次新建，**无法跨进程恢复** — 验收时若仍失败，记为 **已知 Bug B-7**
+**当前实测（2026-06-18）**：`go run main.go -c` 可输出 `💾 从快照恢复 N 条消息`，并能回答重启前总结过的 5 个文件；跨进程恢复已通过。
 
 ---
 
@@ -460,12 +552,29 @@ exit
 | TC-THINK-02 | `-q` 无 thinking 输出 |
 | TC-THINK-04 | `DEEPSEEK_REASONING_EFFORT=high` 思考量变化 |
 | TC-MCP-03/04 | 配置真实 MCP Server，调用 `{server}_{tool}` |
+| TC-MCP-05 | 自然语言安装 MCP（触发 `install_mcp`），写入 `~/.qiuqiu/mcp_servers.json`，不重启即可看到 `{server}_{tool}` |
 | TC-QUIET-02 | `-q` 仍显示最终答案和高危确认 |
 | TC-QUIET-03 | 同输入对比 `-q` 与非 `-q` 输出差异 |
 | TC-PROMPT-04 | Plan 全流程使用 generate/review/reflect/replan 模板 |
 | TC-STABLE-01 | 20+ 轮对话不崩溃 |
 | TC-STABLE-02 | `/mode plan` ↔ `/mode ask` ×5 |
 | TC-STABLE-03 | `read_file` 读大文件 + 后续对话正常 |
+
+**当前实测（2026-06-18）**：
+- `TC-MCP-03/04/05`：自然语言安装 codegraph MCP、初始化项目、刷新工具后可调用 `codegraph_explore`；已修复工具刷新和双前缀命名问题。
+- `TC-QUIET-02/03`：`-q` 仍显示最终答案和高危确认，不显示 thinking / token / cache 中间日志。
+- `TC-THINK-01/02/04`：非 `-q` 可见 thinking，`-q` 隐藏 thinking，`DEEPSEEK_REASONING_EFFORT=high` 有明显 reasoning token。
+- `TC-PROMPT-04`：generate/review/reflect 可观察，最终任务可继续完成；replan 缺少明确可验收提示，记录为 **待优化 T-3**。
+
+---
+
+## 当前待优化项
+
+| ID | 来源用例 | 待优化项 | 当前影响 |
+|----|----------|----------|----------|
+| T-1 | TC-STEPS-03 | Plan 执行中无法可靠输入 `/pause`；需要后台控制命令通道或 step 间显式控制点 | 用例无法严格验收执行中暂停 |
+| T-2 | TC-INT-02 / TC-STORM-01 | loop guard 错误历史可能影响后续普通输入 | 中断后普通问候可能被上一轮错误语境污染 |
+| T-3 | TC-PROMPT-04 | Plan 步骤失败后重规划应输出明确 `重新规划` 提示 | generate/review/reflect 可见，但 replan 可观察性不足 |
 
 ---
 

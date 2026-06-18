@@ -57,9 +57,19 @@ go run main.go
 >
 > 价格三项默认不配置（不显示费用）——单价随模型与时间变动，请按 [DeepSeek 官方定价](https://api-docs.deepseek.com/zh-cn/quick_start/pricing) 自行填入校准；`/usage` 的 token 数始终展示。
 
-### 配置 MCP 工具
+### 安装 MCP 工具
 
-编辑 `~/.qiuqiu/mcp_servers.json`：
+可以直接在对话里告诉 QiuQiuPro：
+
+```text
+帮我安装 @modelcontextprotocol/server-filesystem 这个 MCP，并把当前目录作为参数
+```
+
+Agent 会调用 `install_mcp` 工具，在确认后写入 `~/.qiuqiu/mcp_servers.json`、立即连接 MCP Server、
+发现工具并注册到当前会话，不需要重启。如果某个 MCP 需要先做项目级初始化（例如 `codegraph init`），
+初始化后可以让 Agent “刷新这个 MCP”，它会调用 `refresh_mcp` 重新连接并注册最新工具。
+
+也可以手动编辑 `~/.qiuqiu/mcp_servers.json`，下次启动时自动加载：
 
 ```json
 [
@@ -69,7 +79,19 @@ go run main.go
 
 ### 安装外部 Skill
 
-放一个 `.json` 文件到 `~/.qiuqiu/skills/`：
+可以直接在对话里说“帮我安装这个 Skill”，然后粘贴 JSON / `SKILL.md`、提供本地路径或 URL。Agent 会调用
+`install_skill` 工具，在确认后写入 `~/.qiuqiu/skills/<name>.json`，并热加载到当前进程，随后即可：
+
+```text
+/use debug_expert
+```
+
+`install_skill` 会自动识别两种格式：
+
+- QiuQiuPro JSON：包含 `name`、`description`、`system_prompt`
+- Markdown Skill：`SKILL.md`，用 YAML front matter 声明 `name` / `description`，正文作为 `system_prompt`
+
+也可以手动放一个 `.json` 文件到 `~/.qiuqiu/skills/`，下次启动时自动加载：
 
 ```json
 {
@@ -83,6 +105,14 @@ go run main.go
 }
 ```
 
+卸载外部 Skill 时，可以直接说：
+
+```text
+帮我删除 seedance 这个 Skill
+```
+
+Agent 会调用 `delete_skill`，仅允许删除 `~/.qiuqiu/skills/` 下的外部 Skill；内置 `prompt/skills/` 不会被删除。若删除的是当前激活 Skill，会自动回到 `default`。
+
 ---
 
 ## 命令
@@ -93,7 +123,7 @@ go run main.go
 | `/replay` | 回放当前会话的事件日志 |
 | `/explain <文件>` | 让 LLM 解释指定文件的内容和作用 |
 | `/test` | 运行当前项目的测试 |
-| `/use <skill>` | 切换 Skill（如 `/use architect`） |
+| `/use <skill>` | 切换 Skill（如 `/use architect`）；`/use default` 恢复默认 Agent |
 | `/compact` | 手动压缩上下文（折叠旧对话为摘要，主动重置前缀缓存）|
 | `/usage` | 查看本次会话的 token 用量（输入 / 缓存命中 / 输出 / 思考 / 合计）与估算费用 |
 | `/maxsteps [n]` | 设置单次连续计划执行的 step 上限；`0` 表示不限制 |
@@ -117,8 +147,9 @@ go run main.go
 D:\QiuQiuPro\
 ├── main.go                    ← 入口（API Key + MCP + Skill + 命令注册 + 对话循环）
 │
-├── agent/                     ← Agent 核心（4 个文件）
+├── agent/                     ← Agent 核心
 │   ├── agent.go               ← 结构体 + 注册 + Skill 切换 + 高危工具名单
+│   ├── install_tools.go       ← install_skill / delete_skill / install_mcp / refresh_mcp 热安装工具
 │   ├── run.go                 ← Agent 核心循环 + 高危操作用户确认
 │   ├── plan.go                ← 拆步骤 + 自我审视 + 执行 + 动态重规划
 │   └── helpers.go             ← 辅助函数
@@ -137,7 +168,9 @@ D:\QiuQiuPro\
 │
 ├── event/store.go             ← Event Sourcing（JSON Lines）
 ├── mcp/client.go              ← MCP 协议客户端
-├── skill/skill.go             ← Skill 定义 + 内置 + 外部加载
+├── mcp/manager.go             ← MCP 配置持久化 + 热安装 / 热注册
+├── skill/skill.go             ← Skill 定义 + 外部加载
+├── skill/manager.go           ← Skill 安装 / 列表 / 查找 / 热加载
 ├── .gitignore / go.mod / go.sum
 ├── OPTIMIZATION_SUMMARY.md    ← 优化过程记录
 ```
@@ -175,7 +208,7 @@ D:\QiuQiuPro\
 | **Agent** | LLM + Tool + Memory + Planning 的循环执行系统 |
 | **Tool** | Agent 能调用的函数（内置 11 个 + 任意 MCP 外部工具） |
 | **MCP** | 工具即插即用协议（Model Context Protocol） |
-| **Skill** | 人格切换卡 = SystemPrompt + 工具白名单 + 规则 |
+| **Skill** | 人格切换卡 = SystemPrompt + 工具白名单 + 规则，可热安装 |
 | **Plan** | 复杂任务拆成步骤，每步独立执行 |
 | **Event Log** | 每步操作记录为不可变事件（JSON Lines），支持重放 |
 | **斜杠命令** | 以 `/` 开头的内置快捷操作，可扩展注册 |
@@ -219,8 +252,8 @@ D:\QiuQiuPro\
 | 3 | **API Key 自动保存** | 首次输入保存到 `~/.qiuqiu/key`，后续免配置 |
 | 4 | **Plan 自我审视** | LLM 拆完步骤后自己检查质量，有问题自动修正 |
 | 5 | **动态重规划** | 执行中某步失败，自动重新规划剩余步骤并继续 |
-| 6 | **MCP 可配置** | 从 `~/.qiuqiu/mcp_servers.json` 读取，改配置不用改代码 |
-| 7 | **Skill 外部加载** | `~/.qiuqiu/skills/*.json` 启动时自动加载 |
+| 6 | **MCP 可配置 / 热安装** | 从 `~/.qiuqiu/mcp_servers.json` 读取，也可由 `install_mcp` 写入并立即注册；初始化后可用 `refresh_mcp` 刷新工具 |
+| 7 | **Skill 外部加载 / 热安装** | `~/.qiuqiu/skills/*.json` 启动时自动加载，也可由 `install_skill` 写入并立即 `/use`；外部 Skill 可由 `delete_skill` 删除 |
 | 8 | **Glob + Grep 工具** | 拆分为独立工具，LLM 更容易选中正确工具 |
 | 9 | **安全拦截防线** | 高危工具（写文件/执行命令）执行前弹 `[Y/n]` 确认 |
 | 10 | **斜杠命令系统** | `/help`、`/explain`、`/test`、`/use` 等可扩展命令 |

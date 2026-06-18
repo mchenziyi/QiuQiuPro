@@ -16,6 +16,8 @@ import (
 	"agentdemo/tool"
 )
 
+const defaultSystemPrompt = "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。"
+
 // Agent 核心结构。按职责拆分到同包的多个文件：
 //   - tools.go      工具注册 / 筛选 / 定义 / 风险分类
 //   - skill.go      Skill 人格与 plan/ask 模式
@@ -26,36 +28,37 @@ import (
 //   - run.go        核心循环 / 工具分发 / 流式
 //   - plan.go       规划 / 反思 / 重规划
 type Agent struct {
-	client          *openai.Client
-	apiKey          string
-	model           string
-	allTools        map[string]tool.Tool
-	activeTools     []string
-	store           *event.Store
-	session         *Session // 会话状态：ID + 对话历史 + 大小管理
-	currentSkill    *skill.Skill
-	sysPrompt       string
-	cmdRegistry     *command.Registry
-	lastEventID     string
-	Quiet           bool        // true 时隐藏中间日志
-	Mode            string      // 运行模式："plan"（规划执行）| "ask"（直接问答）
-	planMode        atomic.Bool // true=只读调研模式，写工具被拒绝
-	toolCallCount   int
-	in              *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
-	gate            Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
-	sink            Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
-	summarizer      summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
-	reasoningEffort string        // DeepSeek V4 思考强度："max"（默认）/ "high"；thinking 关闭时被忽略
+	client           *openai.Client
+	apiKey           string
+	model            string
+	allTools         map[string]tool.Tool
+	activeTools      []string
+	store            *event.Store
+	session          *Session // 会话状态：ID + 对话历史 + 大小管理
+	currentSkill     *skill.Skill
+	sysPrompt        string
+	defaultSysPrompt string
+	cmdRegistry      *command.Registry
+	lastEventID      string
+	Quiet            bool        // true 时隐藏中间日志
+	Mode             string      // 运行模式："plan"（规划执行）| "ask"（直接问答）
+	planMode         atomic.Bool // true=只读调研模式，写工具被拒绝
+	toolCallCount    int
+	in               *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
+	gate             Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
+	sink             Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔
+	summarizer       summarizeFunc // 上下文压缩时产出摘要（默认走 LLM，可注入便于测试）
+	reasoningEffort  string        // DeepSeek V4 思考强度："max"（默认）/ "high"；thinking 关闭时被忽略
 
 	// 上下文压缩：按「占模型窗口的比例」触发，靠真实用量驱动，对前缀缓存友好。
-	contextWindow        int     // 模型上下文窗口（token）；<=0 关闭自动压缩
-	compactRatio         float64 // 提示达到窗口该比例时触发压缩
-	softCompactRatio     float64 // 达到该比例时提醒一次（不压缩）
-	compactForceRatio    float64 // 高水位强制压缩
-	lastPromptTokens     int     // 上一轮 LLM 调用的真实 prompt_tokens
-	softCompactNoticed   bool
-	consecutiveCompacts  int
-	compactStuck         bool
+	contextWindow       int     // 模型上下文窗口（token）；<=0 关闭自动压缩
+	compactRatio        float64 // 提示达到窗口该比例时触发压缩
+	softCompactRatio    float64 // 达到该比例时提醒一次（不压缩）
+	compactForceRatio   float64 // 高水位强制压缩
+	lastPromptTokens    int     // 上一轮 LLM 调用的真实 prompt_tokens
+	softCompactNoticed  bool
+	consecutiveCompacts int
+	compactStuck        bool
 
 	// 前缀缓存：稳定 system 段 + turn-tail 记忆 + 诊断与会话级命中统计（对齐 Reasonix）。
 	cachedSystemPrompt  string
@@ -121,7 +124,7 @@ func New(apiKey, model string, continueSession bool) (*Agent, error) {
 		Mode:        "ask",
 		gate:        ConfirmHighRiskGate{}, // 默认：高危确认，等价于改造前的行为
 		sink:        ConsoleSink{},         // 默认：渲染到控制台，等价于改造前的 fmt.Print
-		sysPrompt:   "你是球球（QiuQiuPro），一个 Coding Agent。始终用中文回答，代码和术语保留原文。",
+		sysPrompt:   defaultSystemPrompt,
 
 		contextWindow:     defaultContextWindow,
 		compactRatio:      defaultCompactRatio,
@@ -133,6 +136,7 @@ func New(apiKey, model string, continueSession bool) (*Agent, error) {
 	if p, err := LoadRawPrompt("prompt/default/system.xml"); err == nil {
 		a.sysPrompt = p
 	}
+	a.defaultSysPrompt = a.sysPrompt
 	a.composeCachedSystemPrompt()
 	a.summarizer = a.llmSummarize // 默认摘要器：走真实 LLM
 	if continueSession {
@@ -154,17 +158,19 @@ func (a *Agent) TrimMessages()                      { a.session.Trim() }
 // SpawnSubAgent 派生一个共享客户端 / 工具 / 存储的子 Agent，独立会话执行一个子任务。
 func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) {
 	sub := &Agent{
-		client:   a.client,
-		model:    a.model,
-		allTools: a.allTools,
-		store:    a.store,
-		session:  NewSession(fmt.Sprintf("%s_sub_%d", a.session.ID, time.Now().UnixNano())),
-		Quiet:    a.Quiet,
-		in:       a.in,   // 子 Agent 共用父级的输入读取器
-		gate:     a.gate, // 子 Agent 继承父级权限门（如只读模式）
-		sink:     a.sink, // 子 Agent 继承父级输出去向
+		client:           a.client,
+		model:            a.model,
+		allTools:         a.allTools,
+		store:            a.store,
+		session:          NewSession(fmt.Sprintf("%s_sub_%d", a.session.ID, time.Now().UnixNano())),
+		Quiet:            a.Quiet,
+		in:               a.in,   // 子 Agent 共用父级的输入读取器
+		gate:             a.gate, // 子 Agent 继承父级权限门（如只读模式）
+		sink:             a.sink, // 子 Agent 继承父级输出去向
+		sysPrompt:        a.sysPrompt,
+		defaultSysPrompt: a.defaultSysPrompt,
 
-		contextWindow:    a.contextWindow, // 继承上下文压缩配置，子任务过长时同样兜底
+		contextWindow:     a.contextWindow, // 继承上下文压缩配置，子任务过长时同样兜底
 		compactRatio:      a.compactRatio,
 		softCompactRatio:  a.softCompactRatio,
 		compactForceRatio: a.compactForceRatio,

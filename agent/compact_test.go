@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -177,6 +179,56 @@ func TestMaybeCompact_SoftNoticeNoCompaction(t *testing.T) {
 	}
 	if notices != 1 {
 		t.Fatalf("软线提醒应只出现一次，实际 %d", notices)
+	}
+}
+
+func TestRunCompactsAfterFinalAssistantMessage(t *testing.T) {
+	mock := &mockDeepSeek{t: t}
+	srv := httptest.NewServer(http.HandlerFunc(mock.handler))
+	defer srv.Close()
+
+	a := newCacheHitAgent(t, srv.URL, false, 100)
+	a.SetSink(&captureSink{})
+
+	answer, err := a.Run(context.Background(), strings.Repeat("x", 1000))
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if answer != "Done." {
+		t.Fatalf("answer=%q, want Done.", answer)
+	}
+	msgs := a.session.Messages()
+	if len(msgs) == 0 || !strings.Contains(msgs[0].Content, "summary") {
+		t.Fatalf("Run 应在最终 assistant 入历史后触发压缩，实际消息：%+v", msgs)
+	}
+}
+
+func TestMaybeCompact_ForceCompactsHugeRecentAssistant(t *testing.T) {
+	a := newDispatchAgent(t, AllowAllGate{})
+	a.SetSink(&captureSink{})
+	a.contextWindow, a.compactRatio, a.softCompactRatio = 1000, 0.8, 0.5
+	a.lastPromptTokens = 1500 // force: >= compactForceRatio
+	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: "请详细解释"})
+	a.session.Add(openai.ChatCompletionMessage{Role: "assistant", Content: strings.Repeat("长回答", 3000)})
+	a.session.Add(openai.ChatCompletionMessage{Role: "user", Content: "你好"})
+	a.summarizer = func(_ context.Context, msgs []openai.ChatCompletionMessage) (string, error) {
+		if len(msgs) < 2 {
+			t.Fatalf("强制压缩应折叠超长 assistant，实际待摘要消息数 %d", len(msgs))
+		}
+		return "SUMMARY_WITH_LONG_ASSISTANT", nil
+	}
+
+	a.maybeCompact(context.Background(), openai.Usage{PromptTokens: 1500})
+
+	msgs := a.session.Messages()
+	if len(msgs) != 2 {
+		t.Fatalf("强制压缩后应只保留摘要 + 当前用户消息，实际 %d: %+v", len(msgs), msgs)
+	}
+	if !strings.Contains(msgs[0].Content, "SUMMARY_WITH_LONG_ASSISTANT") {
+		t.Fatalf("首条应为摘要，实际 %+v", msgs[0])
+	}
+	if msgs[1].Role != "user" || msgs[1].Content != "你好" {
+		t.Fatalf("应仅保留最近用户消息，实际 %+v", msgs[1])
 	}
 }
 

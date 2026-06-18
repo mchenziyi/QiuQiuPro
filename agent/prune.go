@@ -26,7 +26,7 @@ func (a *Agent) PruneStaleToolResults() (PruneStats, error) {
 		return st, nil
 	}
 	msgs := a.session.Messages()
-	head, start, ok := a.planCompaction(msgs, 1)
+	head, start, ok := a.planCompaction(msgs, 1, minRecentKeep)
 	if !ok {
 		return st, nil
 	}

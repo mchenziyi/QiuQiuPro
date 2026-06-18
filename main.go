@@ -4,11 +4,11 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
 	"strconv"
 	"strings"
 
@@ -20,12 +20,6 @@ import (
 	"agentdemo/skill"
 	"agentdemo/tool"
 )
-
-type MCPConfig struct {
-	Name    string   `json:"name"`
-	Command string   `json:"command"`
-	Args    []string `json:"args"`
-}
 
 func getAPIKey(in *bufio.Reader) string {
 	if key := os.Getenv("DEEPSEEK_API_KEY"); key != "" {
@@ -60,25 +54,6 @@ func envFloat(key string) float64 {
 		}
 	}
 	return 0
-}
-
-func loadMCPConfigs() []MCPConfig {
-	home, _ := os.UserHomeDir()
-	configFile := home + "/.qiuqiu/mcp_servers.json"
-	data, err := os.ReadFile(configFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		fmt.Printf("  ⚠️  读取 MCP 配置失败：%v\n", err)
-		return nil
-	}
-	var configs []MCPConfig
-	if err := json.Unmarshal(data, &configs); err != nil {
-		fmt.Printf("  ⚠️  解析 MCP 配置失败：%v\n", err)
-		return nil
-	}
-	return configs
 }
 
 func main() {
@@ -133,13 +108,29 @@ func main() {
 	})
 	ctx := context.Background()
 
-	// ========== 加载 MCP 插件 ==========
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt)
+	go func() {
+		for range sigCh {
+			a.Interrupt()
+		}
+	}()
+
+	// ========== 加载 Skill（通过 Manager，支持热安装） ==========
+	home, _ := os.UserHomeDir()
+	skillsDir := home + "/.qiuqiu/skills"
+	skillMgr := skill.NewManager("prompt/skills", skillsDir)
+
+	// ========== 加载 MCP 插件（通过 Manager，支持热安装） ==========
+	mcpConfigPath := home + "/.qiuqiu/mcp_servers.json"
+	mcpMgr := mcp.NewManager(mcpConfigPath, mcp.Connect, a.RegisterMCPTools)
+
 	fmt.Println("\n🔌 正在加载 MCP 插件...")
-	configs := loadMCPConfigs()
-	if len(configs) == 0 {
-		fmt.Println("  没有配置 MCP Server（可编辑 ~/.qiuqiu/mcp_servers.json 添加）")
+	mcpConfigs := mcpMgr.List()
+	if len(mcpConfigs) == 0 {
+		fmt.Println("  没有配置 MCP Server（可编辑 ~/.qiuqiu/mcp_servers.json 添加，或让我帮你安装）")
 	}
-	for _, cfg := range configs {
+	for _, cfg := range mcpConfigs {
 		mc, err := mcp.Connect(cfg.Name, cfg.Command, cfg.Args...)
 		if err != nil {
 			fmt.Printf("  ⚠️  [%s] 加载失败：%v\n", cfg.Name, err)
@@ -154,15 +145,14 @@ func main() {
 		fmt.Printf("  ✅ [%s] 已加载 %d 个工具\n", mc.Name, len(tools))
 	}
 
-	// ========== 加载 Skill ==========
-	home, _ := os.UserHomeDir()
-	skillsDir := home + "/.qiuqiu/skills"
-	allSkills, _ := skill.LoadFromDir("prompt/skills")
-	externalSkills, _ := skill.LoadFromDir(skillsDir)
-	allSkills = append(allSkills, externalSkills...)
+	// 注册热安装工具
+	a.RegisterTool(a.NewInstallSkillTool(skillMgr))
+	a.RegisterTool(a.NewDeleteSkillTool(skillMgr))
+	a.RegisterTool(a.NewInstallMCPTool(mcpMgr))
+	a.RegisterTool(a.NewRefreshMCPTool(mcpMgr))
 
 	fmt.Println("\n🎯 可用 Skill（输入 /use <技能名> 切换）：")
-	for _, s := range allSkills {
+	for _, s := range skillMgr.List() {
 		fmt.Printf("  - %s\n", s.Name)
 	}
 
@@ -252,28 +242,7 @@ func main() {
 		},
 	})
 
-	// /use <skill> — 切换 Skill
-	registry.Register(command.Command{
-		Name: "use", Description: "切换 Skill（专业模式）。用法：/use <技能名>",
-		Handler: func(args string) bool {
-			if args == "" {
-				fmt.Println("❌ 请指定 Skill 名，如：/use architect")
-				fmt.Println("可用 Skill：")
-				for _, s := range allSkills {
-					fmt.Printf("  - %s：%s\n", s.Name, s.Description)
-				}
-				return true
-			}
-			for _, s := range allSkills {
-				if s.Name == args {
-					a.ApplySkill(s)
-					return true
-				}
-			}
-			fmt.Printf("❌ 未找到 Skill：%s（输入 /use 查看所有可用 Skill）\n", args)
-			return true
-		},
-	})
+	registerUseCommand(registry, a, skillMgr)
 
 	// /cleanup [目录] — 扫描并清理垃圾文件
 	registry.Register(command.Command{
@@ -469,6 +438,10 @@ func main() {
 		case "ask":
 			// Ask 模式：直接问答，不走规划
 			answer, err := a.Run(ctx, input)
+			if errors.Is(err, agent.ErrInterrupted) {
+				fmt.Println("  ⚡ 已中断当前操作")
+				continue
+			}
 			if err != nil {
 				fmt.Printf("❌ 回答失败：%v\n", err)
 			} else {
@@ -476,18 +449,37 @@ func main() {
 			}
 
 		case "plan":
-			// Plan 模式：只读调研 → 方案审批 → 执行
+			// Plan 模式：只读调研 → GeneratePlan → ReviewPlan → 审批 → ExecutePlan
+			goal := input
+
 			a.SetPlanMode(true)
 			fmt.Println("  📋 正在调研方案...（只读模式，不会修改代码）")
-			plan, err := a.Run(ctx, input)
+			research, err := a.Run(ctx, goal)
+			if errors.Is(err, agent.ErrInterrupted) {
+				fmt.Println("  ⚡ 已中断当前操作")
+				a.SetPlanMode(false)
+				continue
+			}
 			if err != nil {
 				fmt.Printf("❌ 调研失败：%v\n", err)
 				a.SetPlanMode(false)
 				continue
 			}
 
-			// 展示方案并请求审批
-			fmt.Printf("\n📋 方案建议：\n%s\n", plan)
+			fmt.Println("  📋 正在生成执行计划...")
+			planGoal := goal
+			if strings.TrimSpace(research) != "" {
+				planGoal = goal + "\n\n调研摘要（供规划参考）：\n" + research
+			}
+			plan, err := a.GeneratePlan(ctx, planGoal)
+			if err != nil {
+				fmt.Printf("❌ 规划失败：%v\n", err)
+				a.SetPlanMode(false)
+				continue
+			}
+			plan, _ = a.ReviewPlan(ctx, plan)
+
+			fmt.Printf("\n📋 方案建议：\n%s\n", formatPlanProposal(research, plan))
 			fmt.Print("  批准执行？[Y/n] ")
 			if !a.Confirm() {
 				fmt.Println("  已取消执行，可以修改后重试")
@@ -495,15 +487,63 @@ func main() {
 				continue
 			}
 
-			// 批准执行
 			a.SetPlanMode(false)
 			fmt.Println("  ✅ 方案已批准，开始执行...")
-			_, err = a.Run(ctx, "Plan approved — implement it now. Use todo_write to track progress.")
-			if err != nil {
+			if err := a.ExecutePlan(ctx, plan); err != nil {
+				if errors.Is(err, agent.ErrPlanPaused) {
+					continue
+				}
+				if errors.Is(err, agent.ErrInterrupted) {
+					fmt.Println("  ⚡ 已中断当前操作")
+					continue
+				}
 				fmt.Printf("❌ 执行失败：%v\n", err)
 				continue
 			}
 			fmt.Println("\n🎉 执行完成！")
 		}
 	}
+}
+
+// registerUseCommand 注册 /use <skill>；/use default 恢复默认人格与全量工具。
+// 使用 SkillManager 动态读取，热安装的 Skill 立即可用。
+func registerUseCommand(registry *command.Registry, a *agent.Agent, mgr *skill.Manager) {
+	registry.Register(command.Command{
+		Name: "use", Description: "切换 Skill（专业模式）。用法：/use <技能名|default>",
+		Handler: func(args string) bool {
+			if args == "" {
+				fmt.Println("❌ 请指定 Skill 名，如：/use architect 或 /use default")
+				fmt.Println("可用 Skill：")
+				fmt.Println("  - default：默认 Coding Agent（恢复全量工具）")
+				for _, s := range mgr.List() {
+					fmt.Printf("  - %s：%s\n", s.Name, s.Description)
+				}
+				return true
+			}
+			if args == "default" {
+				a.ClearSkill()
+				return true
+			}
+			if s, ok := mgr.Find(args); ok {
+				a.ApplySkill(s)
+				return true
+			}
+			fmt.Printf("❌ 未找到 Skill：%s（输入 /use 查看所有可用 Skill）\n", args)
+			return true
+		},
+	})
+}
+
+func formatPlanProposal(research string, plan *agent.Plan) string {
+	var b strings.Builder
+	if strings.TrimSpace(research) != "" {
+		b.WriteString("调研摘要：\n")
+		b.WriteString(strings.TrimSpace(research))
+		b.WriteString("\n\n")
+	}
+	b.WriteString("执行步骤：\n")
+	for _, s := range plan.Steps {
+		fmt.Fprintf(&b, "  %d. %s\n", s.ID, s.Desc)
+	}
+	return strings.TrimRight(b.String(), "\n")
 }

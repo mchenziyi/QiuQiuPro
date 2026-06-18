@@ -17,8 +17,9 @@ import (
 
 // MCPClient 包装一个 MCP Server 连接
 type MCPClient struct {
-	Name   string         // Server 名称，用作工具名前缀
-	client *client.Client // MCP 协议客户端
+	Name              string         // Server 名称，用作工具名前缀
+	client            *client.Client // MCP 协议客户端
+	DiscoverToolsFunc func() ([]tool.Tool, error)
 }
 
 // Connect 启动一个 MCP Server 进程并建立连接
@@ -43,9 +44,13 @@ func Connect(name, command string, args ...string) (*MCPClient, error) {
 	return &MCPClient{Name: name, client: mcpClient}, nil
 }
 
-// DiscoverTools 获取 Server 暴露的所有工具，包装成球球的 Tool 格式
-// 每个工具加前缀（如 filesystem_read_file），避免命名冲突
+// DiscoverTools 获取 Server 暴露的所有工具，包装成球球的 Tool 格式。
+// 工具名保持 MCP 原始名称，由 Agent.RegisterMCPTools 统一加 server 前缀。
 func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
+	if c.DiscoverToolsFunc != nil {
+		return c.DiscoverToolsFunc()
+	}
+
 	// 调用 MCP 协议的 ListTools 方法，让 Server 返回它支持的所有工具
 	toolsReq := mcp.ListToolsRequest{}
 	toolsResp, err := c.client.ListTools(context.Background(), toolsReq)
@@ -58,7 +63,7 @@ func (c *MCPClient) DiscoverTools() ([]tool.Tool, error) {
 	for i := range toolsResp.Tools {
 		mt := toolsResp.Tools[i] // 取副本，避免闭包捕获循环变量的问题
 		t := tool.Tool{
-			Name:        fmt.Sprintf("%s_%s", c.Name, mt.Name), // 加前缀，如 "filesystem_read_file"
+			Name:        mt.Name,
 			Description: mt.Description,
 			Parameters:  mt.InputSchema, // MCP 的 InputSchema 就是 JSON Schema 格式，直接复用
 			Execute: func(ctx context.Context, args json.RawMessage) (string, error) {

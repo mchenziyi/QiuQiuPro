@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 
 	openai "github.com/sashabaranov/go-openai"
 
@@ -20,7 +21,9 @@ func (a *Agent) RegisterTools(tools []tool.Tool) {
 
 func (a *Agent) RegisterMCPTools(prefix string, tools []tool.Tool) {
 	for _, t := range tools {
-		t.Name = fmt.Sprintf("%s_%s", prefix, t.Name)
+		if !strings.HasPrefix(t.Name, prefix+"_") {
+			t.Name = fmt.Sprintf("%s_%s", prefix, t.Name)
+		}
 		a.allTools[t.Name] = t
 	}
 }

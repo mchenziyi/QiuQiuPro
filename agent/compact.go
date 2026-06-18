@@ -16,15 +16,15 @@ type summarizeFunc func(ctx context.Context, msgs []openai.ChatCompletionMessage
 
 // 压缩触发参数（对齐 Reasonix 默认值）。
 const (
-	defaultContextWindow   = 1_000_000
-	defaultCompactRatio    = 0.8
-	defaultSoftRatio       = 0.5
-	defaultCompactForce    = 0.9
-	defaultCompactTarget   = 0.5
-	maxTailTokens          = 16384
-	minCompactMessages     = 2
-	fallbackTokPerChar     = 0.25
-	minFoldTokens          = 400
+	defaultContextWindow = 1_000_000
+	defaultCompactRatio  = 0.8
+	defaultSoftRatio     = 0.5
+	defaultCompactForce  = 0.9
+	defaultCompactTarget = 0.5
+	maxTailTokens        = 16384
+	minCompactMessages   = 2
+	fallbackTokPerChar   = 0.25
+	minFoldTokens        = 400
 )
 
 const (
@@ -95,9 +95,14 @@ func (a *Agent) Compact(ctx context.Context) {
 
 func (a *Agent) compact(ctx context.Context, manual, force bool) error {
 	msgs := a.session.Messages()
-	head, start, ok := a.planCompaction(msgs, minCompactMessages)
+	minKeep := minRecentKeep
+	if force {
+		// 强制压缩时，最近一条用户输入足以延续当前轮；允许折叠刚刚产生的超长 assistant。
+		minKeep = 1
+	}
+	head, start, ok := a.planCompaction(msgs, minCompactMessages, minKeep)
 	if !ok {
-		head, start, ok = a.planCompaction(msgs, 1)
+		head, start, ok = a.planCompaction(msgs, 1, minKeep)
 	}
 	if !ok {
 		if manual {
@@ -176,14 +181,14 @@ func estimateTextTokens(s string) int {
 	return byBytes
 }
 
-func (a *Agent) planCompaction(msgs []openai.ChatCompletionMessage, min int) (head, start int, ok bool) {
+func (a *Agent) planCompaction(msgs []openai.ChatCompletionMessage, min, minKeep int) (head, start int, ok bool) {
 	head = 0
 	if a.contextWindow > 0 {
 		budget := maxTailTokens
 		if maxByWin := int(float64(a.contextWindow) * defaultCompactTarget); maxByWin < budget {
 			budget = maxByWin
 		}
-		start = tailStart(msgs, head, budget, a.tokPerChar(), minRecentKeep)
+		start = tailStart(msgs, head, budget, a.tokPerChar(), minKeep)
 	} else {
 		start = len(msgs) - minRecentKeep
 		for start > head && msgs[start].Role == "tool" {
@@ -256,10 +261,14 @@ func renderForSummary(msgs []openai.ChatCompletionMessage) string {
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
-			b.WriteString("【用户】" + m.Content + "\n")
+			b.WriteString("【用户】")
+			b.WriteString(m.Content)
+			b.WriteString("\n")
 		case "assistant":
 			if m.Content != "" {
-				b.WriteString("【助手】" + m.Content + "\n")
+				b.WriteString("【助手】")
+				b.WriteString(m.Content)
+				b.WriteString("\n")
 			}
 			for _, tc := range m.ToolCalls {
 				b.WriteString(fmt.Sprintf("【助手·调用工具】%s(%s)\n", tc.Function.Name, tc.Function.Arguments))
