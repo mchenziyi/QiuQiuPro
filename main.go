@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"time"
 
 	"agentdemo/agent"
 	"agentdemo/cleanup"
@@ -422,6 +423,18 @@ func main() {
 			addr = "localhost" + addr
 		}
 		fmt.Printf("🌐 Web UI 启动于 http://%s\n", addr)
+
+		// Ctrl+C 优雅关闭 HTTP 服务
+		shutdownCh := make(chan os.Signal, 1)
+		signal.Notify(shutdownCh, os.Interrupt)
+		go func() {
+			<-shutdownCh
+			fmt.Println("\n👋 正在关闭 HTTP 服务...")
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			srv.Shutdown(shutdownCtx)
+		}()
+
 		if err := srv.ListenAndServe(*webMode); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "❌ HTTP 服务异常退出：%v\n", err)
 			os.Exit(1)
