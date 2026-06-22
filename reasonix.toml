@@ -74,11 +74,7 @@ network = true
 
 # External MCP servers. type: "stdio" (default, a subprocess) | "http" | "sse".
 # ${VAR} / ${VAR:-default} are expanded from the environment in command/args/env/url/headers.
-# [[plugins]]
-# name    = "example"
-# command = "reasonix-plugin-example"
-# [[plugins]]                                  # a remote server over Streamable HTTP
-# name    = "stripe"
-# type    = "http"
-# url     = "https://mcp.stripe.com"
-# headers = { Authorization = "Bearer ${STRIPE_KEY}" }
+
+[[plugins]]
+name    = "openpencil"
+command = "openpencil-mcp"
