@@ -134,9 +134,9 @@ function appendAssistant(text) {
   thread.scrollTop = thread.scrollHeight;
 }
 function appendThinking(text) {
-  // Thinking block - fold into existing or create new
+  // Thinking block - append to the last one if it's still open
   let t = thread.querySelector('.msg-thinking:last-child');
-  if (!t || t.dataset.folded === 'open') {
+  if (!t || t.dataset.folded !== 'open') {
     t = document.createElement('div');
     t.className = 'msg msg-thinking';
     t.dataset.folded = 'open';
