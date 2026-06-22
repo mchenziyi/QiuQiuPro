@@ -117,9 +117,11 @@ func (a *Agent) emitToolResultWithDiffIfJSON(name, result string) {
 		Diff map[string]interface{} `json:"diff"`
 	}
 	if err := json.Unmarshal([]byte(result), &wrapped); err == nil && wrapped.Text != "" && wrapped.Diff != nil {
+		fmt.Printf("[diff] %s: parsed diff for %s, %d hunks\n", name, wrapped.Text, len(wrapped.Diff))
 		a.emitToolResultWithDiff(name, truncate(wrapped.Text, 100), wrapped.Diff)
 		return
 	}
+	fmt.Printf("[diff] %s: no diff in result (err=%v, text=%q, diff=%v), raw=%.80s\n", name, err, wrapped.Text, wrapped.Diff != nil, result)
 	a.emitToolResult(name, truncate(result, 100))
 }
 
