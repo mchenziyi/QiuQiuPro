@@ -17,7 +17,7 @@ import (
 	"agentdemo/agent"
 	"agentdemo/cleanup"
 	"agentdemo/command"
-	// TODO "agentdemo/event"
+	"agentdemo/event"
 	"agentdemo/mcp"
 	"agentdemo/skill"
 	"agentdemo/tool"
