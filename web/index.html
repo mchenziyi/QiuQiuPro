@@ -8,19 +8,23 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #1C1C1E; color: #E5E5EA; }
 #app { display: flex; height: 100vh; }
-#sidebar { width: 260px; background: #151517; border-right: 1px solid #2C2C2E; padding: 12px; }
-#main { flex: 1; display: flex; flex-direction: column; }
+#sidebar { width: 260px; background: #151517; border-right: 1px solid #2C2C2E; padding: 12px; overflow-y: auto; }
+#main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #statusbar { height: 36px; background: #151517; border-bottom: 1px solid #2C2C2E; display: flex; align-items: center; padding: 0 14px; font-size: 11px; color: #8E8E93; }
 #thread { flex: 1; overflow-y: auto; padding: 16px 20px; }
 #composer { height: 56px; margin: 8px 16px; background: #252527; border: 1px solid #3A3A3C; border-radius: 8px; display: flex; align-items: center; padding: 0 16px; }
-#inspector { width: 360px; background: #151517; border-left: 1px solid #2C2C2E; padding: 16px; }
+#inspector { width: 360px; background: #151517; border-left: 1px solid #2C2C2E; padding: 16px; overflow-y: auto; }
 .msg { margin-bottom: 8px; }
-.msg-user { color: #E5E5EA; }
-.msg-thinking { background: #252527; border-radius: 6px; padding: 8px 12px; color: #8E8E93; font-size: 12px; }
-.msg-assistant { background: #252527; border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; }
-.tool-row { background: #252527; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; display: flex; align-items: center; }
-.tool-name { font-weight: bold; margin-right: 8px; }
-.tool-ok { color: #34C759; margin-left: auto; }
+.msg-user { color: #E5E5EA; margin-bottom: 6px; }
+.msg-thinking { background: #252527; border-radius: 6px; padding: 8px 12px; color: #8E8E93; font-size: 12px; margin-bottom: 6px; }
+.msg-assistant { background: #252527; border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
+.tool-row { background: #252527; border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; overflow: hidden; }
+.tool-row-header { display: flex; align-items: center; padding: 6px 10px; }
+.tool-row-body { display: none; padding: 0 10px 8px; font-size: 11px; color: #8E8E93; border-top: 1px solid #2C2C2E; margin-top: 0; padding-top: 6px; white-space: pre-wrap; word-break: break-all; }
+.tool-row.open .tool-row-body { display: block; }
+.tool-name { font-weight: bold; margin-left: 8px; }
+.tool-ok { margin-left: auto; padding-left: 8px; }
+.tool-icon { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; }
 #composer-input { flex: 1; background: none; border: none; color: #E5E5EA; font-size: 13px; outline: none; }
 #composer-btn { background: #3B82F6; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
 .status-item { margin-right: 16px; }
@@ -250,14 +254,26 @@ function addToolRow(name, args, status) {
   const div = document.createElement('div');
   div.className = 'tool-row';
   div.dataset.tool = name;
-  div.innerHTML = '<span class="tool-name">' + name + '</span><span class="tool-args">' + (typeof args === 'string' ? args : JSON.stringify(args)) + '</span><span class="tool-ok">⋯</span>';
+  const iconColor = status === '✓' ? '#1C6B3E' : '#2C5282';
+  const statusIcon = status === '✓' ? '✓' : '⋯';
+  div.innerHTML =
+    '<div class="tool-row-header" onclick="toggleTool(this.parentElement)">' +
+    '<div class="tool-icon" style="background:' + iconColor + '"></div>' +
+    '<span class="tool-name">' + name + '</span>' +
+    '<span class="tool-ok">' + statusIcon + '</span></div>' +
+    '<div class="tool-row-body">' + (typeof args === 'string' ? args : JSON.stringify(args, null, 2)) + '</div>';
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
 function updateToolRow(name, status) {
   const rows = thread.querySelectorAll('.tool-row[data-tool="' + name + '"]');
   const row = rows[rows.length - 1];
-  if (row) row.querySelector('.tool-ok').textContent = status;
+  if (!row) return;
+  row.querySelector('.tool-ok').textContent = status === '✓' ? '✓' : '✗';
+  if (status === '✓') row.querySelector('.tool-icon').style.background = '#1C6B3E';
+}
+function toggleTool(el) {
+  el.classList.toggle('open');
 }
 
 function sendMsg() {
