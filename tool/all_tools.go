@@ -103,17 +103,19 @@ func NewListDirectoryTool() Tool {
 
 func NewEditFileTool() Tool {
 	return Tool{
-		Name: "edit_file", Description: "精确替换文件中的一段文本", ReadOnly: false,
+		Name: "edit_file", Description: "替换文件中的一段文本（可精确一次或全部替换）", ReadOnly: false,
 		Parameters: objParams(
 			prop("path", "string", ""),
 			prop("old_string", "string", ""),
 			prop("new_string", "string", ""),
+			prop("replace_all", "boolean", "设为 true 则替换所有匹配项，缺省只替换第一处"),
 		).Required("path", "old_string", "new_string"),
 		Execute: func(ctx context.Context, args json.RawMessage) (string, error) {
 			var p struct {
-				Path      string `json:"path"`
-				OldString string `json:"old_string"`
-				NewString string `json:"new_string"`
+				Path       string `json:"path"`
+				OldString  string `json:"old_string"`
+				NewString  string `json:"new_string"`
+				ReplaceAll bool   `json:"replace_all"`
 			}
 			if err := json.Unmarshal(args, &p); err != nil {
 				return "", fmt.Errorf("参数解析失败：%v", err)
@@ -122,33 +124,37 @@ func NewEditFileTool() Tool {
 			if err != nil {
 				return "", fmt.Errorf("读取失败: %v", err)
 			}
-			content := string(b)
-			n := strings.Count(content, p.OldString)
+			before := string(b)
+			n := strings.Count(before, p.OldString)
 			if n == 0 {
 				return "", fmt.Errorf("未找到 old_string")
 			}
-			if n > 1 {
-				return "", fmt.Errorf("old_string 出现 %d 次", n)
+			if !p.ReplaceAll && n > 1 {
+				return "", fmt.Errorf("old_string 出现 %d 次，将 replace_all 设为 true 可全部替换", n)
 			}
-			// 计算 diff
-			before := content
-			after := strings.Replace(content, p.OldString, p.NewString, 1)
+			// 计算 after
+			count := 1
+			if p.ReplaceAll {
+				count = -1 // Replace 用 -1 表示全部
+			}
+			after := strings.Replace(before, p.OldString, p.NewString, count)
 			diff := ComputeLineDiff(before, after, p.Path, 3)
 			diffJSON, _ := json.Marshal(diff)
-			// 路径反斜杠 JSON 转义，防止接收端解析失败
 			safePath := strings.ReplaceAll(p.Path, "\\", "\\\\")
 
 			if err := os.WriteFile(p.Path, []byte(after), 0644); err != nil {
 				return "", fmt.Errorf("写入失败: %v", err)
 			}
-			return fmt.Sprintf(`{"text":"已编辑 %s","diff":%s}`, safePath, string(diffJSON)), nil
+			result := fmt.Sprintf(`{"text":"已编辑 %s（%d 处%s）","diff":%s}`,
+				safePath, n, map[bool]string{true: "全部", false: ""}[p.ReplaceAll], string(diffJSON))
+			return result, nil
 		},
 	}
 }
 
 func NewMultiEditTool() Tool {
 	return Tool{
-		Name: "multi_edit", Description: "批量编辑文件，原子性", ReadOnly: false,
+		Name: "multi_edit", Description: "批量编辑文件（一次性提交多条替换，原子提交）", ReadOnly: false,
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
