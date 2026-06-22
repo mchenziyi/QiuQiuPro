@@ -89,7 +89,7 @@ evtSource.addEventListener('tool_call', e => {
 });
 evtSource.addEventListener('tool_result', e => {
   const d = JSON.parse(e.data);
-  updateToolRow(d.name, '✓');
+  updateToolRow(d.name, '✓', d.result || '');
 });
 evtSource.addEventListener('notice', e => {
   const d = JSON.parse(e.data);
@@ -209,7 +209,7 @@ fetch('/api/history').then(r => r.json()).then(msgs => {
       if (m.content) addMsg('assistant', m.content);
     } else if (m.role === 'tool') {
       const name = m.tool || m.name || '';
-      addToolRow(name, '', '✓');
+      addToolRow(name, m.content || '', '✓');
     }
   });
 });
@@ -265,12 +265,16 @@ function addToolRow(name, args, status) {
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
-function updateToolRow(name, status) {
+function updateToolRow(name, status, result) {
   const rows = thread.querySelectorAll('.tool-row[data-tool="' + name + '"]');
   const row = rows[rows.length - 1];
   if (!row) return;
   row.querySelector('.tool-ok').textContent = status === '✓' ? '✓' : '✗';
   if (status === '✓') row.querySelector('.tool-icon').style.background = '#1C6B3E';
+  if (result) {
+    const body = row.querySelector('.tool-row-body');
+    if (body) body.textContent = result;
+  }
 }
 function toggleTool(el) {
   el.classList.toggle('open');
