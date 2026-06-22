@@ -438,7 +438,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var sessions []SessionInfo
+	var sessions []SessionInfo = make([]SessionInfo, 0)
 	currentID := s.agent.SessionID()
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".ckpt") {
@@ -515,7 +515,7 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		Content string `json:"content"`
 		Tool    string `json:"tool,omitempty"`
 	}
-	var out []Msg
+	var out []Msg = make([]Msg, 0)
 	for _, m := range msgs {
 		if m.Role == "user" || m.Role == "assistant" || m.Role == "tool" {
 			out = append(out, Msg{Role: m.Role, Content: m.Content, Tool: m.Name})
