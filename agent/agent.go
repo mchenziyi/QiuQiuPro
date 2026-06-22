@@ -160,6 +160,7 @@ func New(apiKey, model string, continueSession bool) (*Agent, error) {
 
 func (a *Agent) CommandRegistry() *command.Registry { return a.cmdRegistry }
 func (a *Agent) SessionID() string                  { return a.session.ID }
+func (a *Agent) SessionMessages() []openai.ChatCompletionMessage { return a.session.Messages() }
 func (a *Agent) EventStore() *event.Store           { return a.store }
 func (a *Agent) TrimMessages()                      { a.session.Trim() }
 

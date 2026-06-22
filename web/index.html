@@ -196,6 +196,20 @@ function switchSession(id) {
 function newSession() {
   fetch('/api/sessions/new', {method:'POST'}).then(() => location.reload());
 }
+// 页面加载时获取会话历史
+fetch('/api/history').then(r => r.json()).then(msgs => {
+  msgs.forEach(m => {
+    if (m.role === 'user') {
+      addMsg('user', '> ' + m.content);
+    } else if (m.role === 'assistant') {
+      if (m.content) addMsg('assistant', m.content);
+    } else if (m.role === 'tool') {
+      const name = m.tool || m.name || '';
+      addToolRow(name, '', '✓');
+    }
+  });
+});
+
 // 页面加载和每次 done 后刷新会话列表
 loadSessions();
 

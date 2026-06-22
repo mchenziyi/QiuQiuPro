@@ -241,6 +241,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/sessions", s.handleSessions)
 	s.mux.HandleFunc("/api/sessions/switch", s.handleSessionSwitch)
 	s.mux.HandleFunc("/api/sessions/new", s.handleSessionNew)
+	s.mux.HandleFunc("/api/history", s.handleHistory)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
 
@@ -501,6 +502,24 @@ func (s *Server) handleSessionNew(w http.ResponseWriter, r *http.Request) {
 	s.agent.ResetSession()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "session_id": s.agent.SessionID()})
+}
+
+// GET /api/history — 获取当前会话消息列表
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	msgs := s.agent.SessionMessages()
+	type Msg struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+		Tool    string `json:"tool,omitempty"`
+	}
+	var out []Msg
+	for _, m := range msgs {
+		if m.Role == "user" || m.Role == "assistant" || m.Role == "tool" {
+			out = append(out, Msg{Role: m.Role, Content: m.Content, Tool: m.Name})
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
 }
 
 // extractSessionTitle 从 checkpoint 中提取第一条用户消息作为标题。
