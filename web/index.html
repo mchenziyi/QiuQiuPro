@@ -45,6 +45,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
       <span id="st-running" style="color:#34C759;display:none">● 运行中</span>
     </div>
     <div id="thread"></div>
+    <div id="confirm-bar" style="display:none;margin:0 16px 8px;background:#282420;border-radius:6px;padding:8px 12px;font-size:12px;align-items:center;gap:8px">
+      <span style="color:#B8943C;font-weight:bold">⚠ 高危操作：</span>
+      <span id="confirm-tool" style="color:#E5E5EA;font-weight:bold"></span>
+      <span style="color:#8E8E93;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="confirm-desc"></span>
+      <button onclick="confirmAction(true)" style="background:#2C5F3A;color:#A0E0A0;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">Approve</button>
+      <button onclick="confirmAction(false)" style="background:#3A3A3C;color:#8E8E93;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">Reject</button>
+    </div>
     <div id="composer">
       <input id="composer-input" type="text" placeholder="输入消息，或 /command..." autofocus>
       <button id="composer-btn">发送</button>
@@ -113,27 +120,28 @@ evtSource.addEventListener('done', () => {
   btn.textContent = '发送';
   btn.onclick = sendMsg;
   pendingConfirm = null;
+  confirmBar.style.display = 'none';
 });
 
-// Confirm request — 高危操作确认
+// Confirm request — 高危操作确认（显示在输入框上方）
 let pendingConfirm = null;
+const confirmBar = document.getElementById('confirm-bar');
+const confirmTool = document.getElementById('confirm-tool');
+const confirmDesc = document.getElementById('confirm-desc');
 evtSource.addEventListener('confirm_request', e => {
   const d = JSON.parse(e.data);
   pendingConfirm = d;
-  const insp = document.getElementById('inspector-content');
-  insp.innerHTML =
-    '<div style="background:#282420;border-radius:6px;padding:12px;margin-top:8px">' +
-    '<div style="color:#B8943C;font-weight:bold;margin-bottom:8px">⚠ 需要确认</div>' +
-    '<div style="color:#E5E5EA;margin-bottom:4px"><strong>' + d.tool_name + '</strong></div>' +
-    '<div style="color:#8E8E93;font-size:11px;margin-bottom:12px;white-space:pre-wrap">' + (typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments, null, 2)) + '</div>' +
-    '<div style="display:flex;gap:8px">' +
-    '<button onclick="confirmAction(true)" style="background:#2C5F3A;color:#A0E0A0;border:none;border-radius:6px;padding:6px 20px;font-size:12px;cursor:pointer">Approve</button>' +
-    '<button onclick="confirmAction(false)" style="background:#3A3A3C;color:#8E8E93;border:none;border-radius:6px;padding:6px 20px;font-size:12px;cursor:pointer">Reject</button>' +
-    '</div></div>';
+  confirmTool.textContent = d.tool_name;
+  confirmDesc.textContent = typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments);
+  confirmBar.style.display = 'flex';
+  // Inspector 也提示，但不放按钮
+  document.getElementById('inspector-content').innerHTML =
+    '<div style="color:#B8943C">⚠ 高危操作等待确认，请在输入框上方审批</div>';
 });
 function confirmAction(approve) {
   pendingConfirm = null;
-  document.getElementById('inspector-content').textContent = '已确认';
+  confirmBar.style.display = 'none';
+  document.getElementById('inspector-content').textContent = approve ? '✅ 已批准' : '❌ 已拒绝';
   fetch('/api/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approve}) });
 }
 
