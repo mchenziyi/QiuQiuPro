@@ -12,6 +12,10 @@
 - 将 diff、工具结果、审批动作作为一等视图
 - 保留现有 CLI 行为，不加 `--web` 时不改变终端交互
 
+## 设计预览
+
+![QiuQiuPro Codex Desktop Web UI V2](assets/qiuqiupro-codex-desktop-v2.png)
+
 ---
 
 ## 页面布局
@@ -46,7 +50,16 @@
 - 主线程不使用左右气泡；每条消息是 timeline row，按角色、状态和工具类型区分。
 - 高亮颜色只用于状态：绿色表示完成，蓝色表示运行中，黄色表示等待确认，红色表示错误或删除行。
 - 右侧 Inspector 是主要工作区之一，不是附属弹窗；用户查看 diff、审批工具、检查工具结果都在这里完成。
-- V1 默认深色主题，后续可增加浅色主题和主题配置。
+- V1 支持深色 / 浅色主题切换，默认跟随系统主题。
+
+### 主题切换
+
+- 提供 `Auto / Dark / Light` 三种主题选项。
+- `Auto` 使用浏览器的 `prefers-color-scheme`。
+- 用户手动选择的主题保存在浏览器 `localStorage`，不写入项目配置。
+- 主题入口放在左侧边栏底部或顶部状态栏右侧，避免占用 Thread 主区域。
+- 深色和浅色主题共享同一套布局、间距和组件状态，只替换 CSS 变量。
+- diff、状态色和焦点态必须同时适配深浅主题，确保红绿 diff 在浅色背景下仍然可读。
 
 ## 左侧边栏：历史会话
 
@@ -243,6 +256,7 @@ data: <JSON payload>
 9. 不改变现有 CLI 行为（不加 `--web` 时仍是终端交互）
 10. 高危工具在 Inspector 中展示确认详情，并支持 Approve / Reject
 11. `/compact`、`/usage`、`/memory` 等命令仍可通过输入框使用
+12. UI 支持 `Auto / Dark / Light` 主题切换，刷新页面后保留用户选择
 
 ---
 
@@ -251,6 +265,7 @@ data: <JSON payload>
 - 后端：Go net/http + SSE（不需要 WebSocket）
 - 前端：单个 HTML 文件，内嵌 CSS + JS（用 go:embed 打包）
 - 不引入前端构建工具，保持零依赖
+- 主题：CSS custom properties 定义颜色 token，`localStorage` 保存用户主题偏好
 - Diff 渲染：前端根据 hunks 数据渲染红绿行，不依赖外部 diff 库
 - 高危确认通过 `confirm_request` 事件 + `/api/confirm` 回传实现
 - 会话持久化复用现有 `.reasonix/sessions/` checkpoint 机制
