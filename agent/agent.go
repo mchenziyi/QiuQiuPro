@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync/atomic"
 	"time"
 
@@ -108,7 +109,8 @@ func New(apiKey, model string, continueSession bool) (*Agent, error) {
 	config.BaseURL = "https://api.deepseek.com"
 	thinking, effort := deepSeekThinkingConfig() // 默认开启 thinking + max，可经环境变量调整
 	config.HTTPClient = newDeepSeekHTTPClient(thinking)
-	store := event.NewStore(".reasonix/sessions")
+	home, _ := os.UserHomeDir()
+	store := event.NewStore(home + "/.qiuqiu/sessions")
 	var sessionID string
 	if continueSession {
 		sessionID = store.ResolveSessionID()

@@ -34,7 +34,7 @@ type Checkpoint struct {
 
 // Store 事件存储
 type Store struct {
-	dir string // 存储目录，如 ".reasonix/sessions/"
+	dir string // 存储目录，如 "~/.qiuqiu/sessions/"
 }
 
 // NewStore 创建事件存储，目录不存在会自动创建

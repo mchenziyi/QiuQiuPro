@@ -418,7 +418,8 @@ type SessionInfo struct {
 
 // GET /api/sessions — 列出历史会话
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	sessionsDir := ".reasonix/sessions"
+	sessionsDir, _ := os.UserHomeDir()
+	sessionsDir += "/.qiuqiu/sessions"
 	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode([]SessionInfo{})

@@ -23,7 +23,7 @@ const (
 	memoryToolName       = "remember_rule"
 	maxMemoryContentLen  = 300
 	maxRenderedMemories  = 20
-	defaultProjectMemory = ".reasonix/memory.json"
+	defaultProjectMemory = ".qiuqiu/memory.json"
 )
 
 // Memory 只保存偏好/规则，不保存项目知识、代码片段或一次性任务上下文。
