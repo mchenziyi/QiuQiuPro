@@ -7,6 +7,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"agentdemo/mcp"
 	"agentdemo/skill"
 	"agentdemo/tool"
+	"agentdemo/web"
 )
 
 func getAPIKey(in *bufio.Reader) string {
@@ -61,6 +63,7 @@ func main() {
 	flag.BoolVar(&continueSession, "c", false, "恢复最近一次会话")
 	flag.BoolVar(&continueSession, "continue", false, "恢复最近一次会话（同 -c）")
 	quiet := flag.Bool("q", false, "安静模式，减少中间日志")
+	webMode := flag.String("web", "", "启动 Web UI（:端口号，如 :8080）")
 	flag.Parse()
 
 	// 全程只用这一个 stdin 读取器：读 API Key、主循环、高危确认共用，避免混用导致缓冲错位。
@@ -410,6 +413,17 @@ func main() {
 	fmt.Printf("\n🤖 球球 Agent 已启动 | Skill：[%s] 模式：[%s]（输入 /help 查看所有命令）\n",
 		a.CurrentSkillName(), a.CurrentMode())
 	fmt.Println(strings.Repeat("─", 50))
+
+	// ========== Web UI 模式 ==========
+	if *webMode != "" {
+		srv := web.NewServer(a)
+		fmt.Printf("🌐 Web UI 启动于 http://%s\n", *webMode)
+		if err := srv.ListenAndServe(*webMode); err != nil && err != http.ErrServerClosed {
+			fmt.Fprintf(os.Stderr, "❌ HTTP 服务异常退出：%v\n", err)
+			os.Exit(1)
+		}
+		return
+	}
 
 	// ========== 交互式对话循环 ==========
 	for {

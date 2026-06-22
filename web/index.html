@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>球球 - QiuQiuPro</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #1C1C1E; color: #E5E5EA; }
+#app { display: flex; height: 100vh; }
+#sidebar { width: 260px; background: #151517; border-right: 1px solid #2C2C2E; padding: 12px; }
+#main { flex: 1; display: flex; flex-direction: column; }
+#statusbar { height: 36px; background: #151517; border-bottom: 1px solid #2C2C2E; display: flex; align-items: center; padding: 0 14px; font-size: 11px; color: #8E8E93; }
+#thread { flex: 1; overflow-y: auto; padding: 16px 20px; }
+#composer { height: 56px; margin: 8px 16px; background: #252527; border: 1px solid #3A3A3C; border-radius: 8px; display: flex; align-items: center; padding: 0 16px; }
+#inspector { width: 360px; background: #151517; border-left: 1px solid #2C2C2E; padding: 16px; }
+.msg { margin-bottom: 8px; }
+.msg-user { color: #E5E5EA; }
+.msg-thinking { background: #252527; border-radius: 6px; padding: 8px 12px; color: #8E8E93; font-size: 12px; }
+.msg-assistant { background: #252527; border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; }
+.tool-row { background: #252527; border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; display: flex; align-items: center; }
+.tool-name { font-weight: bold; margin-right: 8px; }
+.tool-ok { color: #34C759; margin-left: auto; }
+#composer-input { flex: 1; background: none; border: none; color: #E5E5EA; font-size: 13px; outline: none; }
+#composer-btn { background: #3B82F6; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+.status-item { margin-right: 16px; }
+.brand { color: #3B82F6; font-weight: bold; margin-right: 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="sidebar">
+    <div style="background:#2C2C2E;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:16px">+ 新建会话</div>
+    <div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:8px">今天</div>
+    <div id="session-list"></div>
+  </div>
+  <div id="main">
+    <div id="statusbar">
+      <span class="brand">● 球球</span>
+      <span class="status-item" id="st-mode">plan</span>
+      <span class="status-item" id="st-skill">全栈开发</span>
+      <span class="status-item" id="st-session">—</span>
+      <span class="status-item" id="st-tokens">↑0 ↓0</span>
+      <span class="status-item" id="st-cache">● 0%</span>
+      <span id="st-running" style="color:#34C759;display:none">● 运行中</span>
+    </div>
+    <div id="thread"></div>
+    <div id="composer">
+      <input id="composer-input" type="text" placeholder="输入消息，或 /command..." autofocus>
+      <button id="composer-btn">发送</button>
+    </div>
+  </div>
+  <div id="inspector">
+    <div style="font-size:13px;font-weight:bold;margin-bottom:16px">执行详情</div>
+    <div id="inspector-content" style="font-size:12px;color:#8E8E93">选择一个工具或消息查看详情</div>
+  </div>
+</div>
+<script>
+const thread = document.getElementById('thread');
+const input = document.getElementById('composer-input');
+const btn = document.getElementById('composer-btn');
+const evtSource = new EventSource('/api/events');
+
+evtSource.addEventListener('user_message', e => {
+  const d = JSON.parse(e.data);
+  addMsg('user', '> ' + d.text);
+});
+evtSource.addEventListener('assistant_delta', e => {
+  const d = JSON.parse(e.data);
+  appendAssistant(d.text);
+});
+evtSource.addEventListener('reasoning_delta', e => {
+  const d = JSON.parse(e.data);
+  appendThinking(d.text);
+});
+evtSource.addEventListener('tool_call', e => {
+  const d = JSON.parse(e.data);
+  addToolRow(d.name, d.arguments, 'running');
+});
+evtSource.addEventListener('tool_result', e => {
+  const d = JSON.parse(e.data);
+  updateToolRow(d.name, '✓');
+});
+evtSource.addEventListener('notice', e => {
+  const d = JSON.parse(e.data);
+  addMsg('notice', d.text);
+});
+evtSource.addEventListener('error', e => {
+  const d = JSON.parse(e.data);
+  addMsg('error', '❌ ' + d.text);
+});
+evtSource.addEventListener('state', e => {
+  const d = JSON.parse(e.data);
+  document.getElementById('st-mode').textContent = d.mode;
+  document.getElementById('st-skill').textContent = d.skill;
+  document.getElementById('st-session').textContent = d.session_id;
+  document.getElementById('st-tokens').textContent = '↑' + d.cache_hit + ' ↓' + d.cache_miss;
+  if (d.cache_hit + d.cache_miss > 0) {
+    const rate = (d.cache_hit / (d.cache_hit + d.cache_miss) * 100).toFixed(1);
+    document.getElementById('st-cache').textContent = '● ' + rate + '%';
+  }
+  const running = document.getElementById('st-running');
+  running.style.display = d.running ? 'inline' : 'none';
+  if (d.running) {
+    btn.textContent = '停止';
+    btn.onclick = stopRun;
+  } else {
+    btn.textContent = '发送';
+    btn.onclick = sendMsg;
+  }
+});
+evtSource.addEventListener('done', () => {
+  btn.textContent = '发送';
+  btn.onclick = sendMsg;
+});
+
+let lastAssistant = null;
+function addMsg(type, text) {
+  const div = document.createElement('div');
+  div.className = 'msg msg-' + type;
+  div.textContent = text;
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+  lastAssistant = null;
+}
+function appendAssistant(text) {
+  if (!lastAssistant) {
+    const div = document.createElement('div');
+    div.className = 'msg msg-assistant';
+    thread.appendChild(div);
+    lastAssistant = div;
+  }
+  lastAssistant.textContent += text;
+  thread.scrollTop = thread.scrollHeight;
+}
+function appendThinking(text) {
+  // Thinking block - fold into existing or create new
+  let t = thread.querySelector('.msg-thinking:last-child');
+  if (!t || t.dataset.folded === 'open') {
+    t = document.createElement('div');
+    t.className = 'msg msg-thinking';
+    t.dataset.folded = 'open';
+    t.textContent = '▶ ';
+    thread.appendChild(t);
+  }
+  t.textContent += text;
+  thread.scrollTop = thread.scrollHeight;
+}
+function addToolRow(name, args, status) {
+  const div = document.createElement('div');
+  div.className = 'tool-row';
+  div.dataset.tool = name;
+  div.innerHTML = '<span class="tool-name">' + name + '</span><span class="tool-args">' + (typeof args === 'string' ? args : JSON.stringify(args)) + '</span><span class="tool-ok">⋯</span>';
+  thread.appendChild(div);
+  thread.scrollTop = thread.scrollHeight;
+}
+function updateToolRow(name, status) {
+  const rows = thread.querySelectorAll('.tool-row[data-tool="' + name + '"]');
+  const row = rows[rows.length - 1];
+  if (row) row.querySelector('.tool-ok').textContent = status;
+}
+
+function sendMsg() {
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text}) });
+}
+function stopRun() {
+  fetch('/api/interrupt', { method: 'POST' });
+}
+btn.onclick = sendMsg;
+input.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); }
+});
+</script>
+</body>
+</html>

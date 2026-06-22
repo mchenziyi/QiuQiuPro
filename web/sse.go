@@ -1,0 +1,364 @@
+// Package web 提供 QiuQiuPro 的 Web UI 后端：SSE 事件流 + HTTP API。
+//
+// 架构：
+//
+//	SSESink 实现 agent.Sink，Agent 运行时的所有事件经它广播到所有 SSE 客户端。
+//	HTTP Server 提供 /api/events（SSE）、/api/send、/api/interrupt、/api/state 等端点。
+//	前端为单 HTML 文件，内嵌 CSS+JS，通过 go:embed 打包到二进制中。
+package web
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"sync"
+
+	"agentdemo/agent"
+)
+
+// ----- SSE 事件类型（对应 ui-spec.md 的事件合约）-----
+
+type SSEEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
+}
+
+func (e SSEEvent) Marshal() []byte {
+	data, _ := json.Marshal(e.Data)
+	return []byte(fmt.Sprintf("event: %s\ndata: %s\n\n", e.Type, string(data)))
+}
+
+// ----- SSESink -----
+
+// SSESink 实现 agent.Sink，将 Agent 运行事件广播到所有 SSE 客户端。
+// 并发安全。
+type SSESink struct {
+	mu       sync.RWMutex
+	clients  map[chan []byte]struct{}
+	closed   bool
+	onClose  func()
+	toolSeq  int // 用于生成工具调用 id
+}
+
+// NewSSESink 创建一个 SSESink。
+func NewSSESink() *SSESink {
+	return &SSESink{
+		clients: make(map[chan []byte]struct{}),
+	}
+}
+
+// OnClose 注册清理回调（例如 HTTP Server 退出时关闭所有 SSE 连接）。
+func (s *SSESink) OnClose(fn func()) { s.onClose = fn }
+
+// Subscribe 创建一个新的 SSE 客户端通道。调用方负责在连接关闭时调用 Unsubscribe。
+func (s *SSESink) Subscribe() chan []byte {
+	ch := make(chan []byte, 64)
+	s.mu.Lock()
+	s.clients[ch] = struct{}{}
+	s.mu.Unlock()
+	return ch
+}
+
+// Unsubscribe 移除 SSE 客户端通道并关闭它。
+func (s *SSESink) Unsubscribe(ch chan []byte) {
+	s.mu.Lock()
+	delete(s.clients, ch)
+	s.mu.Unlock()
+}
+
+// Emit 实现 agent.Sink 接口，将事件广播到所有 SSE 客户端。
+func (s *SSESink) Emit(ev agent.Event) {
+	msgs := s.eventToSSE(ev)
+	if len(msgs) == 0 {
+		return
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return
+	}
+	for ch := range s.clients {
+		for _, msg := range msgs {
+			select {
+			case ch <- msg:
+			default:
+				// 客户端消费太慢，丢弃防止阻塞 Agent
+			}
+		}
+	}
+}
+
+// eventToSSE 将 agent.Event 转换为 0-N 条 SSE 消息。
+func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
+	switch ev.Kind {
+	case agent.EventToken:
+		return [][]byte{SSEEvent{Type: "assistant_delta", Data: map[string]string{"text": ev.Text}}.Marshal()}
+
+	case agent.EventReasoning:
+		return [][]byte{SSEEvent{Type: "reasoning_delta", Data: map[string]string{"text": ev.Text}}.Marshal()}
+
+	case agent.EventToolCall:
+		s.mu.Lock()
+		s.toolSeq++
+		id := fmt.Sprintf("call_%d", s.toolSeq)
+		s.mu.Unlock()
+		var argsObj interface{}
+		if err := json.Unmarshal([]byte(ev.Text), &argsObj); err != nil {
+			argsObj = ev.Text
+		}
+		return [][]byte{SSEEvent{
+			Type: "tool_call",
+			Data: map[string]interface{}{
+				"id":   id,
+				"name": ev.Name,
+				"arguments": argsObj,
+			},
+		}.Marshal()}
+
+	case agent.EventToolResult:
+		return [][]byte{SSEEvent{
+			Type: "tool_result",
+			Data: map[string]interface{}{
+				"id":     ev.Name,
+				"name":   ev.Name,
+				"result": ev.Text,
+			},
+		}.Marshal()}
+
+	case agent.EventNotice:
+		return [][]byte{SSEEvent{Type: "notice", Data: map[string]string{"text": ev.Text}}.Marshal()}
+
+	default:
+		return nil
+	}
+}
+
+// Broadcast 向所有 SSE 客户端发送一条原始消息（已编码的 SSE 帧）。
+// 调用方负责消息格式正确。线程安全。
+func (s *SSESink) Broadcast(msg []byte) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.closed {
+		return
+	}
+	for ch := range s.clients {
+		select {
+		case ch <- msg:
+		default:
+		}
+	}
+}
+
+// broadcastState 推送当前 Agent 状态快照给所有 SSE 客户端。
+func (s *SSESink) broadcastState(st StateSnapshot) {
+	data := SSEEvent{Type: "state", Data: st}.Marshal()
+	s.Broadcast(data)
+}
+
+// Close 关闭所有 SSE 连接。
+func (s *SSESink) Close() {
+	s.mu.Lock()
+	s.closed = true
+	for ch := range s.clients {
+		close(ch)
+	}
+	s.clients = nil
+	s.mu.Unlock()
+	if s.onClose != nil {
+		s.onClose()
+	}
+}
+
+// ----- StateSnapshot -----
+
+// StateSnapshot 是 /api/state 和 SSE state 事件的数据结构。
+type StateSnapshot struct {
+	Mode      string `json:"mode"`
+	Skill     string `json:"skill"`
+	SessionID string `json:"session_id"`
+	Running   bool   `json:"running"`
+	CacheHit  int64  `json:"cache_hit"`
+	CacheMiss int64  `json:"cache_miss"`
+	TokensIn  int64  `json:"tokens_in"`
+	TokensOut int64  `json:"tokens_out"`
+}
+
+// ----- Server -----
+
+// Server 是 QiuQiuPro Web UI 的 HTTP 服务。
+type Server struct {
+	agent  *agent.Agent
+	sink   *SSESink
+	mux    *http.ServeMux
+	srv    *http.Server
+	mu     sync.Mutex
+	running bool
+}
+
+// NewServer 创建一个 Web UI Server。
+func NewServer(a *agent.Agent) *Server {
+	s := &Server{
+		agent: a,
+		sink:  NewSSESink(),
+		mux:   http.NewServeMux(),
+	}
+	a.SetSink(s.sink)
+	s.registerRoutes()
+	return s
+}
+
+func (s *Server) registerRoutes() {
+	s.mux.HandleFunc("/api/events", s.handleEvents)
+	s.mux.HandleFunc("/api/send", s.handleSend)
+	s.mux.HandleFunc("/api/interrupt", s.handleInterrupt)
+	s.mux.HandleFunc("/api/state", s.handleState)
+	s.mux.HandleFunc("/", s.handleStatic)
+}
+
+// ListenAndServe 监听 addr 并启动 HTTP 服务。
+func (s *Server) ListenAndServe(addr string) error {
+	s.mu.Lock()
+	s.srv = &http.Server{Addr: addr, Handler: s.mux}
+	s.mu.Unlock()
+	log.Printf("🌐 QiuQiuPro Web UI: http://%s\n", addr)
+	return s.srv.ListenAndServe()
+}
+
+// Shutdown 优雅关闭 HTTP 服务和 SSE 连接。
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.sink.Close()
+	s.mu.Lock()
+	srv := s.srv
+	s.mu.Unlock()
+	if srv != nil {
+		return srv.Shutdown(ctx)
+	}
+	return nil
+}
+
+// /api/events — SSE 端点
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	ch := s.sink.Subscribe()
+	defer s.sink.Unsubscribe(ch)
+
+	// 连接后立即推送当前状态
+	s.sink.broadcastState(s.buildState())
+
+	ctx := r.Context()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "%s", msg)
+			flusher.Flush()
+		}
+	}
+}
+
+// POST /api/send — 发送用户输入
+func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Text string `json:"text"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Text == "" {
+		http.Error(w, "text required", http.StatusBadRequest)
+		return
+	}
+
+	// 在后台 goroutine 中执行 Agent.Run
+	go func() {
+		// SSE 推送用户消息回显
+		s.sink.Broadcast(SSEEvent{Type: "user_message", Data: map[string]string{"text": req.Text}}.Marshal())
+
+		// 更新状态并启动 Run
+		s.sink.broadcastState(func() StateSnapshot {
+			st := s.buildState()
+			st.Running = true
+			return st
+		}())
+
+		_, err := s.agent.Run(context.Background(), req.Text)
+
+		// Run 结束，发送 done 事件并更新状态
+		if err != nil {
+			s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": err.Error()}}.Marshal())
+		}
+		s.sink.Broadcast(SSEEvent{Type: "done", Data: struct{}{}}.Marshal())
+
+		s.sink.broadcastState(s.buildState())
+	}()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusAccepted)
+	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
+}
+
+// POST /api/interrupt — 中断当前执行
+func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	s.agent.Interrupt()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// GET /api/state — 查询当前状态快照
+func (s *Server) handleState(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.buildState())
+}
+
+func (s *Server) buildState() StateSnapshot {
+	hit, miss := s.agent.SessionCacheStats()
+	return StateSnapshot{
+		Mode:      s.agent.CurrentMode(),
+		Skill:     s.agent.CurrentSkillName(),
+		SessionID: s.agent.SessionID(),
+		Running:   false,
+		CacheHit:  hit,
+		CacheMiss: miss,
+	}
+}
+
+// handleStatic 提供静态文件（前端 HTML）。
+// V1 返回一个简单的占位页面，后续替换为完整前端。
+func (s *Server) handleStatic(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(indexHTML)
+}
