@@ -71,24 +71,26 @@ const input = document.getElementById('composer-input');
 const btn = document.getElementById('composer-btn');
 const evtSource = new EventSource('/api/events');
 
+function safeParseSSE(e) { try { return JSON.parse(e.data); } catch(ex) { return null; } }
+
 evtSource.addEventListener('user_message', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   addMsg('user', '> ' + d.text);
 });
 evtSource.addEventListener('assistant_delta', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   appendAssistant(d.text);
 });
 evtSource.addEventListener('reasoning_delta', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   appendThinking(d.text);
 });
 evtSource.addEventListener('tool_call', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   addToolRow(d.name, d.arguments, 'running');
 });
 evtSource.addEventListener('tool_result', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   console.log('tool_result event:', d);
   updateToolRow(d.name, '✓', d.result || '');
   if (d.diff) {
@@ -99,15 +101,14 @@ evtSource.addEventListener('tool_result', e => {
   }
 });
 evtSource.addEventListener('notice', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   addMsg('notice', d.text);
 });
 evtSource.addEventListener('error', e => {
-  const d = JSON.parse(e.data);
-  addMsg('error', '❌ ' + d.text);
+  console.warn('SSE error:', e);
 });
 evtSource.addEventListener('state', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   document.getElementById('st-mode').textContent = d.mode;
   document.getElementById('st-skill').textContent = d.skill;
   document.getElementById('st-session').textContent = d.session_id;
@@ -140,7 +141,7 @@ const confirmBar = document.getElementById('confirm-bar');
 const confirmTool = document.getElementById('confirm-tool');
 const confirmDesc = document.getElementById('confirm-desc');
 evtSource.addEventListener('confirm_request', e => {
-  const d = JSON.parse(e.data);
+  const d = safeParseSSE(e); if (!d) return;
   pendingConfirm = d;
   confirmTool.textContent = d.tool_name;
   confirmDesc.textContent = typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments);
