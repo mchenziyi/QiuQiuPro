@@ -135,12 +135,13 @@ func NewEditFileTool() Tool {
 			after := strings.Replace(content, p.OldString, p.NewString, 1)
 			diff := ComputeLineDiff(before, after, p.Path, 3)
 			diffJSON, _ := json.Marshal(diff)
+			// 路径反斜杠 JSON 转义，防止接收端解析失败
+			safePath := strings.ReplaceAll(p.Path, "\\", "\\\\")
 
 			if err := os.WriteFile(p.Path, []byte(after), 0644); err != nil {
 				return "", fmt.Errorf("写入失败: %v", err)
 			}
-			result := fmt.Sprintf(`{"text":"已编辑 %s","diff":%s}`, p.Path, string(diffJSON))
-			return result, nil
+			return fmt.Sprintf(`{"text":"已编辑 %s","diff":%s}`, safePath, string(diffJSON)), nil
 		},
 	}
 }

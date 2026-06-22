@@ -89,10 +89,13 @@ evtSource.addEventListener('tool_call', e => {
 });
 evtSource.addEventListener('tool_result', e => {
   const d = JSON.parse(e.data);
+  console.log('tool_result event:', d);
   updateToolRow(d.name, '✓', d.result || '');
   if (d.diff) {
-    console.log('diff received:', d.diff);
+    console.log('diff received:', JSON.stringify(d.diff));
     renderDiff(d.diff);
+  } else {
+    console.log('no diff in tool_result');
   }
 });
 evtSource.addEventListener('notice', e => {
