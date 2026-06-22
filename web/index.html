@@ -288,54 +288,37 @@ function toggleTool(el) {
   el.classList.toggle('open');
 }
 
-// 字级 diff：将两段文本逐字对比，返回 HTML
+// 字级 diff：对比两段文本，返回 {delHtml, addHtml} 各自的行内高亮
 function wordDiff(oldText, newText) {
-  if (!oldText && !newText) return '';
-  if (!oldText) return '<span style="background:#1A3D1A;color:#50C878">' + escapeHtml(newText) + '</span>';
-  if (!newText) return '<span style="background:#3D1A1A;color:#FF6B6B;text-decoration:line-through">' + escapeHtml(oldText) + '</span>';
-
-  // 用 LCS 计算逐字差异
-  const a = oldText.split('');
-  const b = newText.split('');
+  if (!oldText && !newText) return {delHtml:'', addHtml:''};
+  const a = oldText.split(''), b = newText.split('');
   const m = a.length, n = b.length;
   const dp = Array.from({length: m+1}, () => new Array(n+1).fill(0));
   for (let i = 1; i <= m; i++)
     for (let j = 1; j <= n; j++)
       dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1]);
-
-  // 回溯
-  let i = m, j = n;
-  const result = [];
+  let i = m, j = n, ops = [];
   while (i > 0 || j > 0) {
-    if (i > 0 && j > 0 && a[i-1] === b[j-1]) {
-      result.push({type: 'same', ch: a[i-1]});
-      i--; j--;
-    } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
-      result.push({type: 'add', ch: b[j-1]});
-      j--;
-    } else if (i > 0) {
-      result.push({type: 'del', ch: a[i-1]});
-      i--;
-    }
+    if (i > 0 && j > 0 && a[i-1] === b[j-1]) { ops.push({t:'s',ch:a[i-1]}); i--; j--; }
+    else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) { ops.push({t:'a',ch:b[j-1]}); j--; }
+    else if (i > 0) { ops.push({t:'d',ch:a[i-1]}); i--; }
   }
-  result.reverse();
-
-  let html = '';
-  let delBuf = '', addBuf = '';
+  ops.reverse();
+  let delBuf='', addBuf='', delHtml='', addHtml='';
   function flush() {
-    if (delBuf) { html += '<span style="background:#3D1A1A;color:#FF6B6B;text-decoration:line-through">' + escapeHtml(delBuf) + '</span>'; delBuf = ''; }
-    if (addBuf) { html += '<span style="background:#1A3D1A;color:#50C878">' + escapeHtml(addBuf) + '</span>'; addBuf = ''; }
+    if (delBuf) { delHtml += '<span style="background:#3D1A1A;color:#FF6B6B;text-decoration:line-through">'+escapeHtml(delBuf)+'</span>'; delBuf=''; }
+    if (addBuf) { addHtml += '<span style="background:#1A3D1A;color:#50C878">'+escapeHtml(addBuf)+'</span>'; addBuf=''; }
   }
-  for (const r of result) {
-    if (r.type === 'same') { flush(); html += escapeHtml(r.ch); }
-    else if (r.type === 'del') delBuf += r.ch;
-    else if (r.type === 'add') addBuf += r.ch;
+  for (const op of ops) {
+    if (op.t === 's') { flush(); delHtml += escapeHtml(op.ch); addHtml += escapeHtml(op.ch); }
+    else if (op.t === 'd') delBuf += op.ch;
+    else if (op.t === 'a') addBuf += op.ch;
   }
   flush();
-  return html;
+  return {delHtml, addHtml};
 }
 
-// 渲染 diff 到 Inspector 面板
+// 渲染 diff 到 Inspector 面板（行级 + 字级）
 function renderDiff(diff) {
   const insp = document.getElementById('inspector-content');
   let html = '<div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#E5E5EA">Diff</div>';
@@ -344,12 +327,12 @@ function renderDiff(diff) {
     html += '<div style="background:#1C1C1E;border-radius:4px;margin-bottom:6px;overflow:hidden">';
     html += '<div style="background:#252527;padding:4px 8px;font-size:10px;color:#8E8E93">@@ -' + h.old_start + ' +' + h.new_start + ' @@</div>';
     for (let li = 0; li < (h.lines || []).length; li++) {
-      const l = h.lines[li];
-      // 检测字级 diff：del 行后面紧跟 add 行
-      const next = h.lines[li + 1];
+      const l = h.lines[li], next = h.lines[li+1];
       if (l.op === 'del' && next && next.op === 'add') {
-        html += '<div style="padding:2px 8px;font-size:11px">' + wordDiff(l.text, next.text) + '</div>';
-        li++; // 跳过下一条 add
+        const wd = wordDiff(l.text, next.text);
+        html += '<div style="background:#3D1A1A;padding:2px 8px;font-size:11px">− ' + wd.delHtml + '</div>';
+        html += '<div style="background:#1A3D1A;padding:2px 8px;font-size:11px">+ ' + wd.addHtml + '</div>';
+        li++;
       } else if (l.op === 'add') {
         html += '<div style="background:#1A3D1A;padding:2px 8px;font-size:11px;color:#50C878">+ ' + escapeHtml(l.text) + '</div>';
       } else if (l.op === 'del') {
