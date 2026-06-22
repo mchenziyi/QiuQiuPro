@@ -150,11 +150,12 @@ function loadSessions() {
   fetch('/api/sessions').then(r => r.json()).then(sessions => {
     const el = document.getElementById('session-list');
     let html = '';
+    const currentId = document.getElementById('st-session').textContent;
     // 运行中
     const running = sessions.filter(s => s.running);
     if (running.length) {
       html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">运行中</div>';
-      running.forEach(s => { html += sessionRow(s, true); });
+      running.forEach(s => { html += sessionRow(s, currentId); });
     }
     // 今天
     const today = new Date(); today.setHours(0,0,0,0);
@@ -162,29 +163,31 @@ function loadSessions() {
     const todays = sessions.filter(s => !s.running && s.time >= todaySec);
     if (todays.length) {
       html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">今天</div>';
-      todays.forEach(s => { html += sessionRow(s, false); });
+      todays.forEach(s => { html += sessionRow(s, currentId); });
     }
     // 昨天
     const yesterdaySec = todaySec - 86400;
     const yesterdays = sessions.filter(s => !s.running && s.time >= yesterdaySec && s.time < todaySec);
     if (yesterdays.length) {
       html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">昨天</div>';
-      yesterdays.forEach(s => { html += sessionRow(s, false); });
+      yesterdays.forEach(s => { html += sessionRow(s, currentId); });
     }
     // 更早
     const older = sessions.filter(s => !s.running && s.time < yesterdaySec);
     if (older.length) {
       html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">更早</div>';
-      older.forEach(s => { html += sessionRow(s, false); });
+      older.forEach(s => { html += sessionRow(s, currentId); });
     }
     el.innerHTML = html || '<div style="color:#636366;margin-top:8px">暂无会话</div>';
   });
 }
-function sessionRow(s, isRunning) {
-  const color = s.running ? '#34C759' : '#E5E5EA';
-  const dot = s.running ? '<span style="color:#34C759;margin-right:6px">●</span>' : '';
-  return '<div style="padding:6px 0;color:'+color+';cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"' +
-    ' onclick="switchSession(\''+s.id+'\')">' + dot + s.title + '</div>';
+function sessionRow(s, currentID) {
+  const isCurrent = s.id === currentID;
+  const color = s.running ? '#34C759' : (isCurrent ? '#3B82F6' : '#E5E5EA');
+  const dot = s.running ? '<span style="color:#34C759;margin-right:6px">●</span>' : (isCurrent ? '<span style="color:#3B82F6;margin-right:6px">▎</span>' : '');
+  const cursor = isCurrent ? 'default' : 'pointer';
+  return '<div style="padding:6px 0;color:'+color+';cursor:'+cursor+';white-space:nowrap;overflow:hidden;text-overflow:ellipsis"' +
+    (isCurrent ? '' : ' onclick="switchSession(\''+s.id+'\')"') + '>' + dot + s.title + '</div>';
 }
 function switchSession(id) {
   fetch('/api/sessions/switch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:id})})

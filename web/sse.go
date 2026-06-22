@@ -239,6 +239,8 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/confirm", s.handleConfirm)
 	s.mux.HandleFunc("/api/state", s.handleState)
 	s.mux.HandleFunc("/api/sessions", s.handleSessions)
+	s.mux.HandleFunc("/api/sessions/switch", s.handleSessionSwitch)
+	s.mux.HandleFunc("/api/sessions/new", s.handleSessionNew)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
 
@@ -458,6 +460,47 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
+}
+
+// POST /api/sessions/switch — 切换会话
+func (s *Server) handleSessionSwitch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	if ok := s.agent.SwitchSession(req.SessionID); !ok {
+		http.Error(w, "会话不存在", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "session_id": req.SessionID})
+}
+
+// POST /api/sessions/new — 新建会话
+func (s *Server) handleSessionNew(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	s.runMu.Lock()
+	defer s.runMu.Unlock()
+	s.agent.ResetSession()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "session_id": s.agent.SessionID()})
 }
 
 // extractSessionTitle 从 checkpoint 中提取第一条用户消息作为标题。
