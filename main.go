@@ -417,7 +417,11 @@ func main() {
 	// ========== Web UI 模式 ==========
 	if *webMode != "" {
 		srv := web.NewServer(a)
-		fmt.Printf("🌐 Web UI 启动于 http://%s\n", *webMode)
+		addr := *webMode
+		if addr[0] == ':' {
+			addr = "localhost" + addr
+		}
+		fmt.Printf("🌐 Web UI 启动于 http://%s\n", addr)
 		if err := srv.ListenAndServe(*webMode); err != nil && err != http.ErrServerClosed {
 			fmt.Fprintf(os.Stderr, "❌ HTTP 服务异常退出：%v\n", err)
 			os.Exit(1)
