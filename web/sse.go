@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"agentdemo/agent"
 )
@@ -43,7 +44,6 @@ type SSESink struct {
 	clients  map[chan []byte]struct{}
 	closed   bool
 	onClose  func()
-	toolSeq  int // 用于生成工具调用 id
 }
 
 // NewSSESink 创建一个 SSESink。
@@ -104,10 +104,6 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 		return [][]byte{SSEEvent{Type: "reasoning_delta", Data: map[string]string{"text": ev.Text}}.Marshal()}
 
 	case agent.EventToolCall:
-		s.mu.Lock()
-		s.toolSeq++
-		id := fmt.Sprintf("call_%d", s.toolSeq)
-		s.mu.Unlock()
 		var argsObj interface{}
 		if err := json.Unmarshal([]byte(ev.Text), &argsObj); err != nil {
 			argsObj = ev.Text
@@ -115,7 +111,7 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 		return [][]byte{SSEEvent{
 			Type: "tool_call",
 			Data: map[string]interface{}{
-				"id":   id,
+				"id":   ev.ID,
 				"name": ev.Name,
 				"arguments": argsObj,
 			},
@@ -123,7 +119,7 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 
 	case agent.EventToolResult:
 		data := map[string]interface{}{
-			"id":     ev.Name,
+			"id":     ev.ID,
 			"name":   ev.Name,
 			"result": ev.Text,
 		}
@@ -214,7 +210,7 @@ type Server struct {
 	mux        *http.ServeMux
 	srv        *http.Server
 	mu         sync.Mutex
-	running    bool
+	running    atomic.Bool
 	confirmCh  chan bool
 	runMu      sync.Mutex // 确保同一时间只有一个 Run 在执行
 }
@@ -334,15 +330,13 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		// SSE 推送用户消息回显
 		s.sink.Broadcast(SSEEvent{Type: "user_message", Data: map[string]string{"text": req.Text}}.Marshal())
 
-		s.sink.broadcastState(func() StateSnapshot {
-			st := s.buildState()
-			st.Running = true
-			return st
-		}())
+		s.running.Store(true)
+		s.sink.broadcastState(s.buildState())
 
 		s.runMu.Lock()
 		_, err := s.agent.Run(context.Background(), req.Text)
 		s.runMu.Unlock()
+		s.running.Store(false)
 
 		// Run 结束，发送 done 事件并更新状态
 		if err != nil {
@@ -408,7 +402,7 @@ func (s *Server) buildState() StateSnapshot {
 		Mode:      s.agent.CurrentMode(),
 		Skill:     s.agent.CurrentSkillName(),
 		SessionID: s.agent.SessionID(),
-		Running:   false,
+		Running:   s.running.Load(),
 		CacheHit:  hit,
 		CacheMiss: miss,
 	}

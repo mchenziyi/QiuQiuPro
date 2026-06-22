@@ -32,6 +32,7 @@ type Event struct {
 	Name    string
 	Text    string
 	Verbose bool
+	ID      string // 工具调用 ID（tool_call_id），仅 ToolCall/ToolResult 使用
 	Extra   map[string]interface{} // 可选的结构化扩展数据（如 diff）
 }
 
@@ -98,34 +99,34 @@ func (a *Agent) emitReasoning(text string) {
 }
 
 // emitToolCall / emitToolResult 输出工具调用与结果（细节日志，由 Sink 统一加 emoji）。
-func (a *Agent) emitToolCall(name, args string) {
-	a.emit(Event{Kind: EventToolCall, Name: name, Text: args, Verbose: true})
+func (a *Agent) emitToolCall(name, args, callID string) {
+	a.emit(Event{Kind: EventToolCall, Name: name, Text: args, Verbose: true, ID: callID})
 }
-func (a *Agent) emitToolResult(name, result string) {
-	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true})
+func (a *Agent) emitToolResult(name, result, callID string) {
+	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true, ID: callID})
 }
 
 // emitToolResultWithDiff 输出带结构化 diff 的工具结果。diffData 为前端可直接消费的 JSON 对象。
-func (a *Agent) emitToolResultWithDiff(name, result string, diffData map[string]interface{}) {
-	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true, Extra: map[string]interface{}{"diff": diffData}})
+func (a *Agent) emitToolResultWithDiff(name, result string, diffData map[string]interface{}, callID string) {
+	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true, ID: callID, Extra: map[string]interface{}{"diff": diffData}})
 }
 
 // emitToolResultWithDiffIfJSON 检查 result 是否为含 diff 的 JSON，若是则拆分发出；否则走普通 emitToolResult。
-func (a *Agent) emitToolResultWithDiffIfJSON(name, result string) {
+func (a *Agent) emitToolResultWithDiffIfJSON(name, result, callID string) {
 	var wrapped struct {
 		Text string                 `json:"text"`
 		Diff map[string]interface{} `json:"diff"`
 	}
 	err := json.Unmarshal([]byte(result), &wrapped)
 	if err == nil && wrapped.Text != "" && wrapped.Diff != nil {
-		a.emitToolResultWithDiff(name, truncate(wrapped.Text, 100), wrapped.Diff)
+		a.emitToolResultWithDiff(name, truncate(wrapped.Text, 100), wrapped.Diff, callID)
 		return
 	}
 	// 只有写工具才需要打日志排查 diff 问题
 	if IsHighRiskTool(name) && err != nil {
 		fmt.Printf("[diff] %s: result is not JSON (err=%v), raw=%.80s\n", name, err, result)
 	}
-	a.emitToolResult(name, truncate(result, 100))
+	a.emitToolResult(name, truncate(result, 100), callID)
 }
 
 // emitConfirmRequest 输出高危操作确认请求。SSE Sink 转为 confirm_request 事件，

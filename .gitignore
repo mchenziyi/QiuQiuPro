@@ -10,6 +10,11 @@ output/
 agentdemo.exe
 agentdemo_build.exe
 web_test.exe
-*.py
-*.js
+# 临时脚本（开发过程中产生）
+build_ui.js
+color_test.js
+fix_thread.js
+build-graph.py
+check-served.py
+detect-dropped.py
 .understand-anything/

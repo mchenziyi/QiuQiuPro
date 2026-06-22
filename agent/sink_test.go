@@ -59,7 +59,7 @@ func TestSink_QuietSuppressesVerbose(t *testing.T) {
 	cs := &captureSink{}
 	a.SetSink(cs)
 
-	a.emitToolCall("read_file", "{}") // Verbose → 丢弃
+	a.emitToolCall("read_file", "{}", "") // Verbose → 丢弃
 	a.debugf("verbose\n")             // Verbose → 丢弃
 	a.noticef("notice\n")             // 非 Verbose → 保留
 

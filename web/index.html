@@ -87,12 +87,12 @@ evtSource.addEventListener('reasoning_delta', e => {
 });
 evtSource.addEventListener('tool_call', e => {
   const d = safeParseSSE(e); if (!d) return;
-  addToolRow(d.name, d.arguments, 'running');
+  addToolRow(d.name, d.arguments, 'running', d.id);
 });
 evtSource.addEventListener('tool_result', e => {
   const d = safeParseSSE(e); if (!d) return;
   console.log('tool_result event:', d);
-  updateToolRow(d.name, '✓', d.result || '');
+  updateToolRow(d.id, '✓', d.result || '');
   if (d.diff) {
     console.log('diff received:', JSON.stringify(d.diff));
     renderDiff(d.diff);
@@ -217,7 +217,7 @@ fetch('/api/history').then(r => r.json()).then(msgs => {
       if (m.content) addMsg('assistant', m.content);
     } else if (m.role === 'tool') {
       const name = m.tool || m.name || '';
-      addToolRow(name, m.content || '', '✓');
+      addToolRow(name, m.content || '', '✓', '');
     }
   });
 });
@@ -258,10 +258,11 @@ function appendThinking(text) {
   t.textContent += text;
   thread.scrollTop = thread.scrollHeight;
 }
-function addToolRow(name, args, status) {
+function addToolRow(name, args, status, id) {
   const div = document.createElement('div');
   div.className = 'tool-row';
   div.dataset.tool = name;
+  div.dataset.callId = id || '';
   const iconColor = status === '✓' ? '#1C6B3E' : '#2C5282';
   const statusIcon = status === '✓' ? '✓' : '⋯';
   div.innerHTML =
@@ -273,9 +274,15 @@ function addToolRow(name, args, status) {
   thread.appendChild(div);
   thread.scrollTop = thread.scrollHeight;
 }
-function updateToolRow(name, status, result) {
-  const rows = thread.querySelectorAll('.tool-row[data-tool="' + name + '"]');
-  const row = rows[rows.length - 1];
+function updateToolRow(id, status, result) {
+  let row;
+  if (id) {
+    row = thread.querySelector('.tool-row[data-call-id="' + id + '"]');
+  } else {
+    // 向后兼容：没有 ID 时按工具名匹配最后一行
+    const rows = thread.querySelectorAll('.tool-row');
+    row = rows[rows.length - 1];
+  }
   if (!row) return;
   row.querySelector('.tool-ok').textContent = status === '✓' ? '✓' : '✗';
   if (status === '✓') row.querySelector('.tool-icon').style.background = '#1C6B3E';

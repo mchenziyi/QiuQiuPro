@@ -184,7 +184,8 @@ func NewMultiEditTool() Tool {
 			if err != nil {
 				return "", fmt.Errorf("读取失败: %v", err)
 			}
-			content := string(b)
+			before := string(b)
+			content := before
 			for i, step := range p.Edits {
 				if step.ReplaceAll {
 					content = strings.ReplaceAll(content, step.OldString, step.NewString)
@@ -202,7 +203,11 @@ func NewMultiEditTool() Tool {
 			if err := os.WriteFile(p.Path, []byte(content), 0644); err != nil {
 				return "", fmt.Errorf("写入失败: %v", err)
 			}
-			return fmt.Sprintf("已编辑 %s（%d 条）", p.Path, len(p.Edits)), nil
+			// 计算 diff
+			diff := ComputeLineDiff(before, content, p.Path, 3)
+			diffJSON, _ := json.Marshal(diff)
+			safePath := strings.ReplaceAll(p.Path, "\\", "\\\\")
+			return fmt.Sprintf(`{"text":"已编辑 %s（%d 条）","diff":%s}`, safePath, len(p.Edits), string(diffJSON)), nil
 		},
 	}
 }

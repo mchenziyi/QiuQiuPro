@@ -143,7 +143,7 @@ func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCa
 
 	for _, tc := range toolCalls {
 		a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
-		a.emitToolCall(tc.Function.Name, tc.Function.Arguments)
+		a.emitToolCall(tc.Function.Name, tc.Function.Arguments, tc.ID)
 	}
 
 	var wg sync.WaitGroup
@@ -173,7 +173,7 @@ func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCa
 
 	for i, tc := range toolCalls {
 		a.recordEvent("tool_result", results[i], tc.Function.Name)
-		a.emitToolResultWithDiffIfJSON(tc.Function.Name, results[i])
+		a.emitToolResultWithDiffIfJSON(tc.Function.Name, results[i], tc.ID)
 		a.session.Add(openai.ChatCompletionMessage{
 			Role: "tool", Content: results[i], ToolCallID: tc.ID, Name: tc.Function.Name,
 		})
