@@ -223,7 +223,11 @@ func (s *Server) ListenAndServe(addr string) error {
 	s.mu.Lock()
 	s.srv = &http.Server{Addr: addr, Handler: s.mux}
 	s.mu.Unlock()
-	log.Printf("🌐 QiuQiuPro Web UI: http://%s\n", addr)
+	display := addr
+	if display[0] == ':' {
+		display = "localhost" + display
+	}
+	log.Printf("🌐 QiuQiuPro Web UI: http://%s\n", display)
 	return s.srv.ListenAndServe()
 }
 
