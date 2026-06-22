@@ -30,9 +30,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 <body>
 <div id="app">
   <div id="sidebar">
-    <div style="background:#2C2C2E;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:16px">+ 新建会话</div>
-    <div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:8px">今天</div>
-    <div id="session-list"></div>
+    <div style="background:#2C2C2E;border-radius:6px;padding:8px 12px;font-size:12px;margin-bottom:16px;cursor:pointer" onclick="newSession()">+ 新建会话</div>
+    <div id="session-list" style="font-size:12px"></div>
   </div>
   <div id="main">
     <div id="statusbar">
@@ -121,6 +120,7 @@ evtSource.addEventListener('done', () => {
   btn.onclick = sendMsg;
   pendingConfirm = null;
   confirmBar.style.display = 'none';
+  loadSessions(); // 刷新会话列表
 });
 
 // Confirm request — 高危操作确认（显示在输入框上方）
@@ -144,6 +144,58 @@ function confirmAction(approve) {
   document.getElementById('inspector-content').textContent = approve ? '✅ 已批准' : '❌ 已拒绝';
   fetch('/api/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approve}) });
 }
+
+// 会话列表
+function loadSessions() {
+  fetch('/api/sessions').then(r => r.json()).then(sessions => {
+    const el = document.getElementById('session-list');
+    let html = '';
+    // 运行中
+    const running = sessions.filter(s => s.running);
+    if (running.length) {
+      html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">运行中</div>';
+      running.forEach(s => { html += sessionRow(s, true); });
+    }
+    // 今天
+    const today = new Date(); today.setHours(0,0,0,0);
+    const todaySec = Math.floor(today.getTime()/1000);
+    const todays = sessions.filter(s => !s.running && s.time >= todaySec);
+    if (todays.length) {
+      html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">今天</div>';
+      todays.forEach(s => { html += sessionRow(s, false); });
+    }
+    // 昨天
+    const yesterdaySec = todaySec - 86400;
+    const yesterdays = sessions.filter(s => !s.running && s.time >= yesterdaySec && s.time < todaySec);
+    if (yesterdays.length) {
+      html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">昨天</div>';
+      yesterdays.forEach(s => { html += sessionRow(s, false); });
+    }
+    // 更早
+    const older = sessions.filter(s => !s.running && s.time < yesterdaySec);
+    if (older.length) {
+      html += '<div style="font-size:10px;color:#636366;font-weight:bold;margin-bottom:6px;margin-top:8px">更早</div>';
+      older.forEach(s => { html += sessionRow(s, false); });
+    }
+    el.innerHTML = html || '<div style="color:#636366;margin-top:8px">暂无会话</div>';
+  });
+}
+function sessionRow(s, isRunning) {
+  const color = s.running ? '#34C759' : '#E5E5EA';
+  const dot = s.running ? '<span style="color:#34C759;margin-right:6px">●</span>' : '';
+  return '<div style="padding:6px 0;color:'+color+';cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"' +
+    ' onclick="switchSession(\''+s.id+'\')">' + dot + s.title + '</div>';
+}
+function switchSession(id) {
+  fetch('/api/sessions/switch', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:id})})
+    .then(() => location.reload());
+}
+function newSession() {
+  fetch('/api/sessions/new', {method:'POST'}).then(() => location.reload());
+}
+// 页面加载和每次 done 后刷新会话列表
+loadSessions();
+
 
 let lastAssistant = null;
 function addMsg(type, text) {

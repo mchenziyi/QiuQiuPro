@@ -14,6 +14,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 
 	"agentdemo/agent"
@@ -230,6 +233,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/interrupt", s.handleInterrupt)
 	s.mux.HandleFunc("/api/confirm", s.handleConfirm)
 	s.mux.HandleFunc("/api/state", s.handleState)
+	s.mux.HandleFunc("/api/sessions", s.handleSessions)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
 
@@ -396,6 +400,85 @@ func (s *Server) buildState() StateSnapshot {
 		CacheHit:  hit,
 		CacheMiss: miss,
 	}
+}
+
+// SessionInfo 是 /api/sessions 返回的会话摘要。
+type SessionInfo struct {
+	ID      string `json:"id"`
+	Title   string `json:"title"`
+	Time    int64  `json:"time"`
+	Running bool   `json:"running"`
+}
+
+// GET /api/sessions — 列出历史会话
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	home, _ := os.UserHomeDir()
+	sessionsDir := filepath.Join(home, ".qiuqiu", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]SessionInfo{})
+		return
+	}
+
+	var sessions []SessionInfo
+	currentID := s.agent.SessionID()
+	for _, e := range entries {
+		if !strings.HasSuffix(e.Name(), ".ckpt") {
+			continue
+		}
+		id := strings.TrimSuffix(e.Name(), ".ckpt")
+		title := extractSessionTitle(filepath.Join(sessionsDir, e.Name()))
+		info, _ := e.Info()
+		sessions = append(sessions, SessionInfo{
+			ID:      id,
+			Title:   title,
+			Time:    info.ModTime().Unix(),
+			Running: id == currentID,
+		})
+	}
+	// 按时间降序
+	for i := 0; i < len(sessions); i++ {
+		for j := i + 1; j < len(sessions); j++ {
+			if sessions[j].Time > sessions[i].Time {
+				sessions[i], sessions[j] = sessions[j], sessions[i]
+			}
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sessions)
+}
+
+// extractSessionTitle 从 checkpoint 中提取第一条用户消息作为标题。
+func extractSessionTitle(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "未知会话"
+	}
+	var ckpt struct {
+		MessagesJSON string `json:"messages_json"`
+	}
+	if err := json.Unmarshal(data, &ckpt); err != nil {
+		return "未知会话"
+	}
+	var msgs []struct {
+		Role    string `json:"role"`
+		Content string `json:"content"`
+	}
+	if err := json.Unmarshal([]byte(ckpt.MessagesJSON), &msgs); err != nil {
+		return "未知会话"
+	}
+	for _, m := range msgs {
+		if m.Role == "user" {
+			// 取前 24 个字
+			runes := []rune(strings.TrimSpace(m.Content))
+			if len(runes) > 24 {
+				return string(runes[:24]) + "…"
+			}
+			return string(runes)
+		}
+	}
+	return "空会话"
 }
 
 // handleStatic 提供静态文件（前端 HTML）。

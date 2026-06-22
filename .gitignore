@@ -9,3 +9,7 @@ output/
 
 agentdemo.exe
 agentdemo_build.exe
+web_test.exe
+*.py
+*.js
+.understand-anything/
