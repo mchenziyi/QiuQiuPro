@@ -306,8 +306,8 @@ function wordDiff(oldText, newText) {
   ops.reverse();
   let delBuf='', addBuf='', delHtml='', addHtml='';
   function flush() {
-    if (delBuf) { delHtml += '<span style="background:#3D1A1A;color:#FF6B6B;text-decoration:line-through">'+escapeHtml(delBuf)+'</span>'; delBuf=''; }
-    if (addBuf) { addHtml += '<span style="background:#1A3D1A;color:#50C878">'+escapeHtml(addBuf)+'</span>'; addBuf=''; }
+    if (delBuf) { delHtml += '<span style="background:#6B2020;color:#FF9999;text-decoration:line-through">'+escapeHtml(delBuf)+'</span>'; delBuf=''; }
+    if (addBuf) { addHtml += '<span style="background:#206B20;color:#99FF99">'+escapeHtml(addBuf)+'</span>'; addBuf=''; }
   }
   for (const op of ops) {
     if (op.t === 's') { flush(); delHtml += escapeHtml(op.ch); addHtml += escapeHtml(op.ch); }
@@ -330,13 +330,13 @@ function renderDiff(diff) {
       const l = h.lines[li], next = h.lines[li+1];
       if (l.op === 'del' && next && next.op === 'add') {
         const wd = wordDiff(l.text, next.text);
-        html += '<div style="background:#3D1A1A;padding:2px 8px;font-size:11px">− ' + wd.delHtml + '</div>';
-        html += '<div style="background:#1A3D1A;padding:2px 8px;font-size:11px">+ ' + wd.addHtml + '</div>';
+        html += '<div style="background:#2D1515;padding:2px 8px;font-size:11px;color:#8A5A5A">− ' + wd.delHtml + '</div>';
+        html += '<div style="background:#152D15;padding:2px 8px;font-size:11px;color:#5A8A5A">+ ' + wd.addHtml + '</div>';
         li++;
       } else if (l.op === 'add') {
-        html += '<div style="background:#1A3D1A;padding:2px 8px;font-size:11px;color:#50C878">+ ' + escapeHtml(l.text) + '</div>';
+        html += '<div style="background:#152D15;padding:2px 8px;font-size:11px;color:#5A8A5A">+ ' + escapeHtml(l.text) + '</div>';
       } else if (l.op === 'del') {
-        html += '<div style="background:#3D1A1A;padding:2px 8px;font-size:11px;color:#FF6B6B;text-decoration:line-through">− ' + escapeHtml(l.text) + '</div>';
+        html += '<div style="background:#2D1515;padding:2px 8px;font-size:11px;color:#8A5A5A;text-decoration:line-through">− ' + escapeHtml(l.text) + '</div>';
       } else {
         html += '<div style="padding:2px 8px;font-size:11px;color:#636366">  ' + escapeHtml(l.text) + '</div>';
       }
