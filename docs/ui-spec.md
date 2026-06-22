@@ -69,7 +69,7 @@
 - 正在运行的会话显示运行状态，后续可支持多个后台任务
 - 点击切换到该历史会话；如果该会话正在运行，继续接收它的事件流
 - 顶部或底部提供"新会话"按钮，开启全新 session
-- 数据来源：`.reasonix/sessions/` 下的 checkpoint 文件
+- 数据来源：`~/.qiuqiu/sessions/` 下的 checkpoint 文件
 
 ### 会话切换 API
 
@@ -268,7 +268,7 @@ data: <JSON payload>
 - 主题：CSS custom properties 定义颜色 token，`localStorage` 保存用户主题偏好
 - Diff 渲染：前端根据 hunks 数据渲染红绿行，不依赖外部 diff 库
 - 高危确认通过 `confirm_request` 事件 + `/api/confirm` 回传实现
-- 会话持久化复用现有 `.reasonix/sessions/` checkpoint 机制
+- 会话持久化复用现有 `~/.qiuqiu/sessions/` checkpoint 机制
 
 ---
 
