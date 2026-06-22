@@ -118,11 +118,13 @@ func (a *Agent) emitToolResultWithDiffIfJSON(name, result string) {
 	}
 	err := json.Unmarshal([]byte(result), &wrapped)
 	if err == nil && wrapped.Text != "" && wrapped.Diff != nil {
-		fmt.Printf("[diff] %s: parsed diff, text=%q, diff=%v\n", name, wrapped.Text, wrapped.Diff != nil)
 		a.emitToolResultWithDiff(name, truncate(wrapped.Text, 100), wrapped.Diff)
 		return
 	}
-	fmt.Printf("[diff] %s: no diff (err=%v, text=%q, hasDiff=%v), raw=%.80s\n", name, err, wrapped.Text, wrapped.Diff != nil, result)
+	// 只有写工具才需要打日志排查 diff 问题
+	if IsHighRiskTool(name) && err != nil {
+		fmt.Printf("[diff] %s: result is not JSON (err=%v), raw=%.80s\n", name, err, result)
+	}
 	a.emitToolResult(name, truncate(result, 100))
 }
 
