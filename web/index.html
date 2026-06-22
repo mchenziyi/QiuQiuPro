@@ -5,30 +5,106 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>球球 - QiuQiuPro</title>
 <style>
+:root {
+  /* Dark theme (default) */
+  --bg-primary: #1C1C1E;
+  --bg-secondary: #151517;
+  --bg-surface: #252527;
+  --bg-elevated: #2C2C2E;
+  --text-primary: #E5E5EA;
+  --text-secondary: #8E8E93;
+  --text-muted: #636366;
+  --border-color: #2C2C2E;
+  --border-light: #3A3A3C;
+  --accent: #3B82F6;
+  --accent-text: #3B82F6;
+  --green: #34C759;
+  --green-bg: #1A3D1A;
+  --green-text: #50C878;
+  --red-bg: #3D1A1A;
+  --red-text: #FF6B6B;
+  --yellow-bg: #282420;
+  --yellow-text: #B8943C;
+  --code-bg: #1C1C1E;
+  --msg-user-color: #E5E5EA;
+  --composer-bg: #252527;
+  --inspector-content: #8E8E93;
+}
+[data-theme="light"] {
+  --bg-primary: #F5F5F7;
+  --bg-secondary: #FFFFFF;
+  --bg-surface: #FFFFFF;
+  --bg-elevated: #E8E8ED;
+  --text-primary: #1D1D1F;
+  --text-secondary: #86868B;
+  --text-muted: #B0B0B5;
+  --border-color: #D2D2D7;
+  --border-light: #D2D2D7;
+  --accent: #0071E3;
+  --accent-text: #0071E3;
+  --green: #34C759;
+  --green-bg: #E8F8E8;
+  --green-text: #1A8C1A;
+  --red-bg: #FDE8E8;
+  --red-text: #C41E1E;
+  --yellow-bg: #FEF7E0;
+  --yellow-text: #9A7B1E;
+  --code-bg: #F5F5F7;
+  --msg-user-color: #1D1D1F;
+  --composer-bg: #FFFFFF;
+  --inspector-content: #86868B;
+  --diff-del-bg: #2D1515;
+  --diff-del-text: #8A5A5A;
+  --diff-del-highlight: #6B2020;
+  --diff-del-highlight-text: #FF9999;
+  --diff-add-bg: #152D15;
+  --diff-add-text: #5A8A5A;
+  --diff-add-highlight: #206B20;
+  --diff-add-highlight-text: #99FF99;
+  --diff-ctx-bg: #1C1C1E;
+  --diff-ctx-text: #636366;
+  --diff-hunk-header: #252527;
+}
+[data-theme="light"] {
+  --inspector-content: #86868B;
+  --diff-del-bg: #FDE8E8;
+  --diff-del-text: #8A3A3A;
+  --diff-del-highlight: #E8A0A0;
+  --diff-del-highlight-text: #8A1A1A;
+  --diff-add-bg: #E8F8E8;
+  --diff-add-text: #3A6A3A;
+  --diff-add-highlight: #A0E8A0;
+  --diff-add-highlight-text: #1A6A1A;
+  --diff-ctx-bg: #F5F5F7;
+  --diff-ctx-text: #86868B;
+  --diff-hunk-header: #E8E8ED;
+}
+
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: #1C1C1E; color: #E5E5EA; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background: var(--bg-primary); color: var(--text-primary); }
 #app { display: flex; height: 100vh; }
-#sidebar { width: 260px; background: #151517; border-right: 1px solid #2C2C2E; padding: 12px; overflow-y: auto; }
+#sidebar { width: 260px; background: var(--bg-secondary); border-right: 1px solid var(--border-color); padding: 12px; overflow-y: auto; }
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-#statusbar { height: 36px; background: #151517; border-bottom: 1px solid #2C2C2E; display: flex; align-items: center; padding: 0 14px; font-size: 11px; color: #8E8E93; }
+#statusbar { height: 36px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 14px; font-size: 11px; color: var(--text-secondary); }
 #thread { flex: 1; overflow-y: auto; padding: 16px 20px; }
-#composer { height: 56px; margin: 8px 16px; background: #252527; border: 1px solid #3A3A3C; border-radius: 8px; display: flex; align-items: center; padding: 0 16px; }
-#inspector { width: 360px; background: #151517; border-left: 1px solid #2C2C2E; padding: 16px; overflow-y: auto; }
+#composer { height: 56px; margin: 8px 16px; background: var(--composer-bg); border: 1px solid var(--border-light); border-radius: 8px; display: flex; align-items: center; padding: 0 16px; }
+#inspector { width: 360px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); padding: 16px; overflow-y: auto; }
 .msg { margin-bottom: 8px; }
-.msg-user { color: #E5E5EA; margin-bottom: 6px; }
-.msg-thinking { background: #252527; border-radius: 6px; padding: 8px 12px; color: #8E8E93; font-size: 12px; margin-bottom: 6px; }
-.msg-assistant { background: #252527; border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
-.tool-row { background: #252527; border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; overflow: hidden; }
+.msg-user { color: var(--msg-user-color); margin-bottom: 6px; }
+.msg-thinking { background: var(--bg-surface); border-radius: 6px; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; margin-bottom: 6px; }
+.msg-assistant { background: var(--bg-surface); border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
+.tool-row { background: var(--bg-surface); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; overflow: hidden; }
 .tool-row-header { display: flex; align-items: center; padding: 6px 10px; }
-.tool-row-body { display: none; padding: 0 10px 8px; font-size: 11px; color: #8E8E93; border-top: 1px solid #2C2C2E; margin-top: 0; padding-top: 6px; white-space: pre-wrap; word-break: break-all; }
+.tool-row-body { display: none; padding: 0 10px 8px; font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--border-color); margin-top: 0; padding-top: 6px; white-space: pre-wrap; word-break: break-all; }
 .tool-row.open .tool-row-body { display: block; }
 .tool-name { font-weight: bold; margin-left: 8px; }
 .tool-ok { margin-left: auto; padding-left: 8px; }
 .tool-icon { width: 20px; height: 20px; border-radius: 4px; flex-shrink: 0; }
-#composer-input { flex: 1; background: none; border: none; color: #E5E5EA; font-size: 13px; outline: none; }
-#composer-btn { background: #3B82F6; color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
+#composer-input { flex: 1; background: none; border: none; color: var(--text-primary); font-size: 13px; outline: none; }
+#composer-btn { background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; cursor: pointer; }
 .status-item { margin-right: 16px; }
-.brand { color: #3B82F6; font-weight: bold; margin-right: 12px; }
+.brand { color: var(--accent); font-weight: bold; margin-right: 12px; }
+#theme-toggle { background: none; border: 1px solid var(--border-color); border-radius: 4px; color: var(--text-secondary); font-size: 10px; padding: 2px 6px; cursor: pointer; margin-left: auto; }
 </style>
 </head>
 <body>
@@ -45,7 +121,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
       <span class="status-item" id="st-session">—</span>
       <span class="status-item" id="st-tokens">↑0 ↓0</span>
       <span class="status-item" id="st-cache">● 0%</span>
-      <span id="st-running" style="color:#34C759;display:none">● 运行中</span>
+      <span id="st-running" style="color:var(--green);display:none">● 运行中</span>
+      <button id="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
     <div id="thread"></div>
     <div id="confirm-bar" style="display:none;margin:0 16px 8px;background:#282420;border-radius:6px;padding:8px 12px;font-size:12px;align-items:center;gap:8px">
@@ -155,6 +232,22 @@ function confirmAction(approve) {
   confirmBar.style.display = 'none';
   document.getElementById('inspector-content').textContent = approve ? '✅ 已批准' : '❌ 已拒绝';
   fetch('/api/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approve}) });
+}
+
+// 主题切换
+(function initTheme() {
+  const saved = localStorage.getItem('qiuqiu-theme');
+  const theme = saved || 'dark';
+  document.documentElement.setAttribute('data-theme', theme);
+  document.getElementById('theme-toggle').textContent = theme === 'dark' ? '🌙' : '☀️';
+})();
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute('data-theme');
+  const next = current === 'dark' ? 'light' : 'dark';
+  html.setAttribute('data-theme', next);
+  localStorage.setItem('qiuqiu-theme', next);
+  document.getElementById('theme-toggle').textContent = next === 'dark' ? '🌙' : '☀️';
 }
 
 // 会话列表
@@ -313,8 +406,8 @@ function wordDiff(oldText, newText) {
   ops.reverse();
   let delBuf='', addBuf='', delHtml='', addHtml='';
   function flush() {
-    if (delBuf) { delHtml += '<span style="background:#6B2020;color:#FF9999;text-decoration:line-through">'+escapeHtml(delBuf)+'</span>'; delBuf=''; }
-    if (addBuf) { addHtml += '<span style="background:#206B20;color:#99FF99">'+escapeHtml(addBuf)+'</span>'; addBuf=''; }
+    if (delBuf) { delHtml += '<span style="background:var(--diff-del-highlight);color:var(--diff-del-highlight-text);text-decoration:line-through">'+escapeHtml(delBuf)+'</span>'; delBuf=''; }
+    if (addBuf) { addHtml += '<span style="background:var(--diff-add-highlight);color:var(--diff-add-highlight-text)">'+escapeHtml(addBuf)+'</span>'; addBuf=''; }
   }
   for (const op of ops) {
     if (op.t === 's') { flush(); delHtml += escapeHtml(op.ch); addHtml += escapeHtml(op.ch); }
@@ -331,21 +424,21 @@ function renderDiff(diff) {
   let html = '<div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#E5E5EA">Diff</div>';
   html += '<div style="font-size:11px;color:#3B82F6;margin-bottom:8px">' + escapeHtml(diff.path) + '</div>';
   (diff.hunks || []).forEach(h => {
-    html += '<div style="background:#1C1C1E;border-radius:4px;margin-bottom:6px;overflow:hidden">';
-    html += '<div style="background:#252527;padding:4px 8px;font-size:10px;color:#8E8E93">@@ -' + h.old_start + ' +' + h.new_start + ' @@</div>';
+    html += '<div style="background:var(--diff-ctx-bg);border-radius:4px;margin-bottom:6px;overflow:hidden">';
+    html += '<div style="background:var(--diff-hunk-header);padding:4px 8px;font-size:10px;color:var(--text-muted)">@@ -' + h.old_start + ' +' + h.new_start + ' @@</div>';
     for (let li = 0; li < (h.lines || []).length; li++) {
       const l = h.lines[li], next = h.lines[li+1];
       if (l.op === 'del' && next && next.op === 'add') {
         const wd = wordDiff(l.text, next.text);
-        html += '<div style="background:#2D1515;padding:2px 8px;font-size:11px;color:#8A5A5A">− ' + wd.delHtml + '</div>';
-        html += '<div style="background:#152D15;padding:2px 8px;font-size:11px;color:#5A8A5A">+ ' + wd.addHtml + '</div>';
+        html += '<div style="background:var(--diff-del-bg);padding:2px 8px;font-size:11px;color:var(--diff-del-text)">− ' + wd.delHtml + '</div>';
+        html += '<div style="background:var(--diff-add-bg);padding:2px 8px;font-size:11px;color:var(--diff-add-text)">+ ' + wd.addHtml + '</div>';
         li++;
       } else if (l.op === 'add') {
-        html += '<div style="background:#152D15;padding:2px 8px;font-size:11px;color:#5A8A5A">+ ' + escapeHtml(l.text) + '</div>';
+        html += '<div style="background:var(--diff-add-bg);padding:2px 8px;font-size:11px;color:var(--diff-add-text)">+ ' + escapeHtml(l.text) + '</div>';
       } else if (l.op === 'del') {
-        html += '<div style="background:#2D1515;padding:2px 8px;font-size:11px;color:#8A5A5A;text-decoration:line-through">− ' + escapeHtml(l.text) + '</div>';
+        html += '<div style="background:var(--diff-del-bg);padding:2px 8px;font-size:11px;color:var(--diff-del-text);text-decoration:line-through">− ' + escapeHtml(l.text) + '</div>';
       } else {
-        html += '<div style="padding:2px 8px;font-size:11px;color:#636366">  ' + escapeHtml(l.text) + '</div>';
+        html += '<div style="padding:2px 8px;font-size:11px;color:var(--diff-ctx-text)">  ' + escapeHtml(l.text) + '</div>';
       }
     }
     html += '</div>';
@@ -364,6 +457,8 @@ function sendMsg() {
   fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text}) });
 }
 function stopRun() {
+  btn.textContent = '停止中…';
+  btn.onclick = null;
   fetch('/api/interrupt', { method: 'POST' });
 }
 btn.onclick = sendMsg;
