@@ -131,6 +131,15 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 	case agent.EventNotice:
 		return [][]byte{SSEEvent{Type: "notice", Data: map[string]string{"text": ev.Text}}.Marshal()}
 
+	case agent.EventConfirmRequest:
+		return [][]byte{SSEEvent{
+			Type: "confirm_request",
+			Data: map[string]interface{}{
+				"tool_name": ev.Name,
+				"arguments": ev.Text,
+			},
+		}.Marshal()}
+
 	default:
 		return nil
 	}
@@ -190,22 +199,27 @@ type StateSnapshot struct {
 
 // Server 是 QiuQiuPro Web UI 的 HTTP 服务。
 type Server struct {
-	agent  *agent.Agent
-	sink   *SSESink
-	mux    *http.ServeMux
-	srv    *http.Server
-	mu     sync.Mutex
-	running bool
+	agent      *agent.Agent
+	sink       *SSESink
+	mux        *http.ServeMux
+	srv        *http.Server
+	mu         sync.Mutex
+	running    bool
+	confirmCh  chan bool
 }
 
 // NewServer 创建一个 Web UI Server。
 func NewServer(a *agent.Agent) *Server {
+	confirmCh := make(chan bool, 1)
 	s := &Server{
-		agent: a,
-		sink:  NewSSESink(),
-		mux:   http.NewServeMux(),
+		agent:     a,
+		sink:      NewSSESink(),
+		mux:       http.NewServeMux(),
+		confirmCh: confirmCh,
 	}
 	a.SetSink(s.sink)
+	// Web 模式使用通道进行高危确认，替代 CLI 的 stdin 确认。
+	a.SetConfirmChan(confirmCh)
 	s.registerRoutes()
 	return s
 }
@@ -214,6 +228,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/events", s.handleEvents)
 	s.mux.HandleFunc("/api/send", s.handleSend)
 	s.mux.HandleFunc("/api/interrupt", s.handleInterrupt)
+	s.mux.HandleFunc("/api/confirm", s.handleConfirm)
 	s.mux.HandleFunc("/api/state", s.handleState)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
@@ -334,6 +349,33 @@ func (s *Server) handleInterrupt(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.agent.Interrupt()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+// POST /api/confirm — 确认或拒绝高危工具
+func (s *Server) handleConfirm(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST required", http.StatusMethodNotAllowed)
+		return
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read body: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Approve bool `json:"approve"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	// 将确认结果写入通道，Agent 阻塞的 confirm() 收到后继续执行
+	select {
+	case s.confirmCh <- req.Approve:
+	default:
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

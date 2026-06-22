@@ -87,6 +87,10 @@ type Agent struct {
 	// Run 循环每轮检测，若为 1 则停止当前操作并返回。
 	interrupted int32
 
+	// confirmChan：Web UI 模式下，GateConfirm 通过此通道异步等待用户批准。
+	// CLI 模式下为 nil，回退到 stdin 确认。
+	confirmChan chan bool
+
 	// 偏好/规则型长期记忆：由模型通过受限工具自主写入，system prompt 稳定注入。
 	memoryStore     *MemoryStore
 	qiuqiuRuleFiles []QiuqiuRuleFile

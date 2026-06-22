@@ -1,0 +1,1864 @@
+{
+  "version": "1.0.0",
+  "kind": "knowledge",
+  "project": {
+    "name": "QiuQiuPro",
+    "description": "从零手写 Agent 系统的实战产物，基于 Go 实现，支持 DeepSeek V4、MCP、Skill 人格、上下文压缩、规划/反思等完整 Agent 能力",
+    "languages": [
+      "go",
+      "markdown",
+      "json",
+      "toml"
+    ],
+    "frameworks": [
+      "openai-go",
+      "mcp-go"
+    ],
+    "analyzedAt": "2026-06-19T16:03:17.593715+00:00",
+    "gitCommitHash": "unknown"
+  },
+  "nodes": [
+    {
+      "id": "file:main.go",
+      "type": "file",
+      "name": "main.go",
+      "filePath": "main.go",
+      "summary": "Agent 主入口，解析命令行参数、读取 API Key、初始化 Agent 并启动交互循环",
+      "tags": [
+        "entry",
+        "cli"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:main_test.go",
+      "type": "file",
+      "name": "main_test.go",
+      "filePath": "main_test.go",
+      "summary": "main.go 的集成测试，验证完整交互流程",
+      "tags": [
+        "test",
+        "integration"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:go.mod",
+      "type": "file",
+      "name": "go.mod",
+      "filePath": "go.mod",
+      "summary": "Go module 定义：module agentdemo，依赖 go-openai 和 mcp-go",
+      "tags": [
+        "config",
+        "dependency"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:STRUCTURES.md",
+      "type": "file",
+      "name": "STRUCTURES.md",
+      "filePath": "STRUCTURES.md",
+      "summary": "核心数据结构速查文档，描述 Tool 结构体和三个固定套路",
+      "tags": [
+        "docs",
+        "reference"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:README.md",
+      "type": "file",
+      "name": "README.md",
+      "filePath": "README.md",
+      "summary": "项目总览：从零手写 Agent 系统的实战产物，基于 Go 实现",
+      "tags": [
+        "docs",
+        "overview"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:OPTIMIZATION_SUMMARY.md",
+      "type": "file",
+      "name": "OPTIMIZATION_SUMMARY.md",
+      "filePath": "OPTIMIZATION_SUMMARY.md",
+      "summary": "性能优化总结文档",
+      "tags": [
+        "docs"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:TODO.md",
+      "type": "file",
+      "name": "TODO.md",
+      "filePath": "TODO.md",
+      "summary": "待办事项清单",
+      "tags": [
+        "docs"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:reasonix.toml",
+      "type": "file",
+      "name": "reasonix.toml",
+      "filePath": "reasonix.toml",
+      "summary": "Reasonix 配置",
+      "tags": [
+        "config"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:cleanup.go",
+      "type": "file",
+      "name": "cleanup.go",
+      "filePath": "cleanup/cleanup.go",
+      "summary": "垃圾文件扫描清理包，支持 /cleanup 命令",
+      "tags": [
+        "tool",
+        "cleanup"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:registry.go",
+      "type": "file",
+      "name": "registry.go",
+      "filePath": "command/registry.go",
+      "summary": "斜杠命令注册表，实现 /help /replay 等命令分发",
+      "tags": [
+        "command",
+        "cli"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:store.go",
+      "type": "file",
+      "name": "store.go",
+      "filePath": "event/store.go",
+      "summary": "事件存储，JSON Lines 格式，支持 Checkpoint 快照",
+      "tags": [
+        "storage",
+        "session"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:client.go",
+      "type": "file",
+      "name": "client.go",
+      "filePath": "mcp/client.go",
+      "summary": "MCP 客户端，连接外部 MCP 服务器",
+      "tags": [
+        "mcp",
+        "external"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:manager.go",
+      "type": "file",
+      "name": "manager.go",
+      "filePath": "mcp/manager.go",
+      "summary": "MCP 管理器，热插拔连接/断开 MCP 服务器",
+      "tags": [
+        "mcp",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:skill.go",
+      "type": "file",
+      "name": "skill.go",
+      "filePath": "skill/skill.go",
+      "summary": "Skill 定义：Name/Description/SystemPrompt/ToolWhitelist/Rules",
+      "tags": [
+        "skill",
+        "persona"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:manager.go:skill",
+      "type": "file",
+      "name": "manager.go (skill)",
+      "filePath": "skill/manager.go",
+      "summary": "Skill 管理器：线程安全的 Skill 生命周期管理（load/list/find/install）",
+      "tags": [
+        "skill",
+        "lifecycle"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:struct.go",
+      "type": "file",
+      "name": "struct.go",
+      "filePath": "tool/struct.go",
+      "summary": "Tool 结构体定义和 AllBuiltInTools 工厂函数",
+      "tags": [
+        "tool",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:all_tools.go",
+      "type": "file",
+      "name": "all_tools.go",
+      "filePath": "tool/all_tools.go",
+      "summary": "所有内置工具实现：read_file/write_file/edit_file/todo_write/search_files/glob/grep/code_search/web_fetch/git_commit/run_shell/delete_range/multi_edit",
+      "tags": [
+        "tool",
+        "implementation"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:agent.go",
+      "type": "file",
+      "name": "agent.go",
+      "filePath": "agent/agent.go",
+      "summary": "Agent 核心结构体定义，包含 client、tools、session、gate、sink、compact、memory 等所有字段",
+      "tags": [
+        "agent",
+        "core"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:run.go",
+      "type": "file",
+      "name": "run.go",
+      "filePath": "agent/run.go",
+      "summary": "Agent 核心循环 Run()，处理用户输入→LLM 调用→工具分发→流式输出",
+      "tags": [
+        "agent",
+        "loop"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:tools.go",
+      "type": "file",
+      "name": "tools.go",
+      "filePath": "agent/tools.go",
+      "summary": "工具注册/筛选/定义：RegisterTool/RegisterTools/RegisterMCPTools/availableTools/toolDefinitions",
+      "tags": [
+        "agent",
+        "tools"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:gate.go",
+      "type": "file",
+      "name": "gate.go",
+      "filePath": "agent/gate.go",
+      "summary": "权限门 Gate 接口：ConfirmHighRiskGate/ReadOnlyGate/AllowAllGate，决定工具调用是否放行",
+      "tags": [
+        "agent",
+        "security"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:sink.go",
+      "type": "file",
+      "name": "sink.go",
+      "filePath": "agent/sink.go",
+      "summary": "事件驱动输出：Event/EventKind/Sink 接口，ConsoleSink/JSONSink/TestSink",
+      "tags": [
+        "agent",
+        "output"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:plan.go",
+      "type": "file",
+      "name": "plan.go",
+      "filePath": "agent/plan.go",
+      "summary": "规划/反思/重规划：Step/Plan 结构体，GeneratePlan/ReviewPlan/Reflect/RePlan",
+      "tags": [
+        "agent",
+        "planning"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:compact.go",
+      "type": "file",
+      "name": "compact.go",
+      "filePath": "agent/compact.go",
+      "summary": "上下文压缩：maybeCompact/llmSummarize/pruneStaleToolResults，95%窗口触发自动压缩",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:deepseek.go",
+      "type": "file",
+      "name": "deepseek.go",
+      "filePath": "agent/deepseek.go",
+      "summary": "DeepSeek V4 专用传输层：bodyFieldInjector 注入 thinking 参数，支持 DEEPSEEK_THINKING 环境变量",
+      "tags": [
+        "agent",
+        "llm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:skill.go",
+      "type": "file",
+      "name": "skill.go (agent)",
+      "filePath": "agent/skill.go",
+      "summary": "Skill 应用：ApplySkill/ClearSkill/formatSkillSystemPrompt，切换人格和工具白名单",
+      "tags": [
+        "agent",
+        "persona"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:ask.go",
+      "type": "file",
+      "name": "ask.go",
+      "filePath": "agent/ask.go",
+      "summary": "Ask 工具：当用户请求有多个合理方案时，列出选项让用户选择",
+      "tags": [
+        "agent",
+        "interaction"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:input.go",
+      "type": "file",
+      "name": "input.go",
+      "filePath": "agent/input.go",
+      "summary": "统一输入流：stdin/ReadLine/confirm，Ctrl+C 协作式中断处理",
+      "tags": [
+        "agent",
+        "input"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:session.go",
+      "type": "file",
+      "name": "session.go",
+      "filePath": "agent/session.go",
+      "summary": "会话状态：Session 结构体，Add/Messages/BuildRequest/Trim/Snapshot/Restore",
+      "tags": [
+        "agent",
+        "session"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:checkpoint.go",
+      "type": "file",
+      "name": "checkpoint.go",
+      "filePath": "agent/checkpoint.go",
+      "summary": "检查点持久化：SaveCheckpoint/RestoreFromCheckpoint，协调 Session 与 event.Store",
+      "tags": [
+        "agent",
+        "persistence"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:hooks.go",
+      "type": "file",
+      "name": "hooks.go",
+      "filePath": "agent/hooks.go",
+      "summary": "工具 Hook：ToolHook 接口，BeforeToolCall/AfterToolCall 扩展点",
+      "tags": [
+        "agent",
+        "hook"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:helpers.go",
+      "type": "file",
+      "name": "helpers.go",
+      "filePath": "agent/helpers.go",
+      "summary": "杂项工具：recordEvent/truncate",
+      "tags": [
+        "agent",
+        "utility"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:prompt.go",
+      "type": "file",
+      "name": "prompt.go",
+      "filePath": "agent/prompt.go",
+      "summary": "Prompt 模板引擎：LoadPrompt/LoadRawPrompt，XML 格式模板 + Go template 变量替换",
+      "tags": [
+        "agent",
+        "prompt"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:cache_shape.go",
+      "type": "file",
+      "name": "cache_shape.go",
+      "filePath": "agent/cache_shape.go",
+      "summary": "前缀缓存形状计算：PrefixShape/CacheDiagnostics，SHA256 哈希 system/tools/prefix",
+      "tags": [
+        "agent",
+        "cache"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:execution_state.go",
+      "type": "file",
+      "name": "execution_state.go",
+      "filePath": "agent/execution_state.go",
+      "summary": "执行状态快照：ExecutionState 结构体，Save/Load/Resume Plan 执行",
+      "tags": [
+        "agent",
+        "state"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:prune.go",
+      "type": "file",
+      "name": "prune.go",
+      "filePath": "agent/prune.go",
+      "summary": "陈旧 tool 结果裁剪：PruneStaleToolResults，保护尾段之外用占位符替换",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:install_tools.go",
+      "type": "file",
+      "name": "install_tools.go",
+      "filePath": "agent/install_tools.go",
+      "summary": "install_skill 工具：从 JSON/Markdown/路径/URL 安装 Skill 人格",
+      "tags": [
+        "agent",
+        "tool"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:long_memory.go",
+      "type": "file",
+      "name": "long_memory.go",
+      "filePath": "agent/long_memory.go",
+      "summary": "长期记忆：Memory/MemoryStore 结构体，remember_rule 工具实现偏好/规则持久化",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:memory_cache.go",
+      "type": "file",
+      "name": "memory_cache.go",
+      "filePath": "agent/memory_cache.go",
+      "summary": "QiuQiu 规则文件管理：QiuqiuRuleFile/EnsureQiuqiuRuleFiles/EmbedRuleFiles，嵌入模板生成",
+      "tags": [
+        "agent",
+        "config"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:usage.go",
+      "type": "file",
+      "name": "usage.go",
+      "filePath": "agent/usage.go",
+      "summary": "Token 用量追踪：TokenUsage/Pricing 结构体，累计 LLM 调用真实用量",
+      "tags": [
+        "agent",
+        "metrics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:storm_test.go",
+      "type": "file",
+      "name": "storm_test.go",
+      "filePath": "agent/storm_test.go",
+      "summary": "Storm Breaker 风暴检测测试：循环检测、输出指纹检测、失败循环检测",
+      "tags": [
+        "test",
+        "storm"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:prompts_xml",
+      "type": "document",
+      "name": "Prompt 模板",
+      "filePath": "prompt/",
+      "summary": "XML 格式的 prompt 模板目录：default/system.xml, plan/generate.xml, plan/reflect.xml, plan/replan.xml, plan/review.xml",
+      "tags": [
+        "prompt",
+        "template"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:qiuqiu_global_template",
+      "type": "document",
+      "name": "QiuQiu 全局规则模板",
+      "filePath": "agent/templates/qiuqiu_global.md",
+      "summary": "嵌入的全局 QIUQIU.md 模板，新用户首次使用时自动生成",
+      "tags": [
+        "template",
+        "embed"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:qiuqiu_project_template",
+      "type": "document",
+      "name": "QiuQiu 项目规则模板",
+      "filePath": "agent/templates/qiuqiu_project.md",
+      "summary": "嵌入的项目级 QIUQIU.md 模板",
+      "tags": [
+        "template",
+        "embed"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:docs",
+      "type": "document",
+      "name": "开发文档",
+      "filePath": "docs/",
+      "summary": "37 篇开发文档，记录每个功能的设计决策和实现细节（cot/streaming/reflexion/prompt/modes/tool-history等）",
+      "tags": [
+        "docs",
+        "history"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:e2e_results",
+      "type": "document",
+      "name": "E2E 测试结果",
+      "filePath": "docs/e2e-results.md",
+      "summary": "端到端测试结果汇总",
+      "tags": [
+        "test",
+        "results"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:reasonix_data",
+      "type": "document",
+      "name": "Reasonix 数据",
+      "filePath": "reasonix/",
+      "summary": "Reasonix 桌面话题数据：topic-created-at, topic-titles, topic-sources",
+      "tags": [
+        "reasonix",
+        "data"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:run_e2e_self_sh",
+      "type": "file",
+      "name": "E2E 自测脚本",
+      "filePath": "scripts/run-e2e-self.sh",
+      "summary": "自动化 E2E 测试脚本",
+      "tags": [
+        "script",
+        "test"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.Run",
+      "type": "function",
+      "name": "Agent.Run()",
+      "filePath": "agent/run.go",
+      "summary": "核心循环：用户输入→composeUserTurn→session.Add→LLM调用(streamChat)→工具分发(dispatchToolCalls)→循环直到无工具调用",
+      "tags": [
+        "agent",
+        "core",
+        "loop"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "func:Agent.streamChat",
+      "type": "function",
+      "name": "Agent.streamChat()",
+      "filePath": "agent/run.go",
+      "summary": "流式 LLM 调用，构建请求（system prompt + session history），处理 tool_call 响应",
+      "tags": [
+        "agent",
+        "llm"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "func:Agent.dispatchToolCalls",
+      "type": "function",
+      "name": "Agent.dispatchToolCalls()",
+      "filePath": "agent/run.go",
+      "summary": "工具分发：按并发/串行策略执行 tool_call，read_file 等只读工具可并行，write_file 等写工具串行",
+      "tags": [
+        "agent",
+        "tool"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Agent.GeneratePlan",
+      "type": "function",
+      "name": "Agent.GeneratePlan()",
+      "filePath": "agent/plan.go",
+      "summary": "让 LLM 把目标拆成步骤，加载 prompt/plan/generate.xml 模板",
+      "tags": [
+        "agent",
+        "planning"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Agent.ReviewPlan",
+      "type": "function",
+      "name": "Agent.ReviewPlan()",
+      "filePath": "agent/plan.go",
+      "summary": "LLM 评审计划质量，检查步骤完整性",
+      "tags": [
+        "agent",
+        "planning"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.Reflect",
+      "type": "function",
+      "name": "Agent.Reflect()",
+      "filePath": "agent/plan.go",
+      "summary": "步骤失败后 LLM 反思原因",
+      "tags": [
+        "agent",
+        "planning"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.RePlan",
+      "type": "function",
+      "name": "Agent.RePlan()",
+      "filePath": "agent/plan.go",
+      "summary": "基于反思结果重新规划",
+      "tags": [
+        "agent",
+        "planning"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Agent.maybeCompact",
+      "type": "function",
+      "name": "Agent.maybeCompact()",
+      "filePath": "agent/compact.go",
+      "summary": "上下文压缩：当 prompt tokens 达到窗口 95% 时触发，调用 llmSummarize 压缩历史",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "func:Agent.llmSummarize",
+      "type": "function",
+      "name": "Agent.llmSummarize()",
+      "filePath": "agent/compact.go",
+      "summary": "LLM 摘要：将对话历史压缩为一段总结，保留最近消息",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Agent.PruneStaleToolResults",
+      "type": "function",
+      "name": "Agent.PruneStaleToolResults()",
+      "filePath": "agent/prune.go",
+      "summary": "裁剪保护尾段之外的陈旧 tool 输出，用占位符替换节省空间",
+      "tags": [
+        "agent",
+        "memory"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Agent.ApplySkill",
+      "type": "function",
+      "name": "Agent.ApplySkill()",
+      "filePath": "agent/skill.go",
+      "summary": "套用 Skill 人格：替换系统提示词 + 收窄工具白名单",
+      "tags": [
+        "agent",
+        "persona"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.ClearSkill",
+      "type": "function",
+      "name": "Agent.ClearSkill()",
+      "filePath": "agent/skill.go",
+      "summary": "清除 Skill，恢复默认人格和全量工具",
+      "tags": [
+        "agent",
+        "persona"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.RegisterTool",
+      "type": "function",
+      "name": "Agent.RegisterTool()",
+      "filePath": "agent/tools.go",
+      "summary": "注册单个工具到 allTools map",
+      "tags": [
+        "agent",
+        "tools"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.availableTools",
+      "type": "function",
+      "name": "Agent.availableTools()",
+      "filePath": "agent/tools.go",
+      "summary": "获取当前可用工具列表，受 activeTools 白名单限制",
+      "tags": [
+        "agent",
+        "tools"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Agent.toolDefinitions",
+      "type": "function",
+      "name": "Agent.toolDefinitions()",
+      "filePath": "agent/tools.go",
+      "summary": "将 Tool 转换为 openai.Tool 格式，供 LLM API 使用",
+      "tags": [
+        "agent",
+        "tools"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Gate.Check",
+      "type": "function",
+      "name": "Gate.Check()",
+      "filePath": "agent/gate.go",
+      "summary": "权限门裁决：Check(toolName, args) → (Decision, reason)，决定放行/确认/拒绝",
+      "tags": [
+        "agent",
+        "security"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Session.BuildRequest",
+      "type": "function",
+      "name": "Session.BuildRequest()",
+      "filePath": "agent/session.go",
+      "summary": "组装 LLM 请求：system prompt + 全量对话历史",
+      "tags": [
+        "agent",
+        "session"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Session.Snapshot",
+      "type": "function",
+      "name": "Session.Snapshot()",
+      "filePath": "agent/session.go",
+      "summary": "序列化会话历史为 JSON bytes，用于 Checkpoint 存档",
+      "tags": [
+        "agent",
+        "session"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Pricing.GetCost",
+      "type": "function",
+      "name": "Pricing.GetCost()",
+      "filePath": "agent/usage.go",
+      "summary": "根据 TokenUsage 和定价配置计算费用",
+      "tags": [
+        "agent",
+        "metrics"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Tool.Execute",
+      "type": "function",
+      "name": "Tool.Execute()",
+      "filePath": "tool/struct.go",
+      "summary": "工具执行函数签名：func(context.Context, json.RawMessage) (string, error)",
+      "tags": [
+        "tool",
+        "interface"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:AllBuiltInTools",
+      "type": "function",
+      "name": "AllBuiltInTools()",
+      "filePath": "tool/struct.go",
+      "summary": "工厂函数：返回所有内置工具列表",
+      "tags": [
+        "tool",
+        "factory"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewReadFileTool",
+      "type": "function",
+      "name": "NewReadFileTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "read_file 工具：读取文件内容，只读",
+      "tags": [
+        "tool",
+        "file"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewWriteFileTool",
+      "type": "function",
+      "name": "NewWriteFileTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "write_file 工具：创建或覆盖文件，写操作",
+      "tags": [
+        "tool",
+        "file"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewEditFileTool",
+      "type": "function",
+      "name": "NewEditFileTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "edit_file 工具：精确替换文件中的文本块",
+      "tags": [
+        "tool",
+        "file"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:NewTodoWriteTool",
+      "type": "function",
+      "name": "NewTodoWriteTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "todo_write 工具：管理待办事项列表",
+      "tags": [
+        "tool",
+        "task"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewSearchFilesTool",
+      "type": "function",
+      "name": "NewSearchFilesTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "search_files 工具：正则搜索文件内容",
+      "tags": [
+        "tool",
+        "search"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewGlobTool",
+      "type": "function",
+      "name": "NewGlobTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "glob 工具：文件路径模式匹配",
+      "tags": [
+        "tool",
+        "search"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewGrepTool",
+      "type": "function",
+      "name": "NewGrepTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "grep 工具：正则表达式搜索文件内容",
+      "tags": [
+        "tool",
+        "search"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewCodeSearchTool",
+      "type": "function",
+      "name": "NewCodeSearchTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "code_search 工具：基于 AST 的代码结构搜索",
+      "tags": [
+        "tool",
+        "search"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:NewWebFetchTool",
+      "type": "function",
+      "name": "NewWebFetchTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "web_fetch 工具：HTTP GET 获取网页内容",
+      "tags": [
+        "tool",
+        "network"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewGitCommitTool",
+      "type": "function",
+      "name": "NewGitCommitTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "git_commit 工具：git add + commit，高危写操作",
+      "tags": [
+        "tool",
+        "git"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:NewRunShellTool",
+      "type": "function",
+      "name": "NewRunShellTool()",
+      "filePath": "tool/all_tools.go",
+      "summary": "run_shell 工具：执行 shell 命令，高危写操作",
+      "tags": [
+        "tool",
+        "shell"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:Manager.List",
+      "type": "function",
+      "name": "Manager.List()",
+      "filePath": "skill/manager.go",
+      "summary": "列出所有已加载的 Skill",
+      "tags": [
+        "skill",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Manager.Find",
+      "type": "function",
+      "name": "Manager.Find()",
+      "filePath": "skill/manager.go",
+      "summary": "按名称查找 Skill",
+      "tags": [
+        "skill",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Manager.Install",
+      "type": "function",
+      "name": "Manager.Install()",
+      "filePath": "skill/manager.go",
+      "summary": "安装新 Skill 到持久化目录",
+      "tags": [
+        "skill",
+        "api"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:MCPManager.Connect",
+      "type": "function",
+      "name": "MCPManager.Connect()",
+      "filePath": "mcp/manager.go",
+      "summary": "连接 MCP 服务器，发现并注册工具",
+      "tags": [
+        "mcp",
+        "api"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "func:MCPManager.Disconnect",
+      "type": "function",
+      "name": "MCPManager.Disconnect()",
+      "filePath": "mcp/manager.go",
+      "summary": "断开 MCP 服务器连接，注销工具",
+      "tags": [
+        "mcp",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Store.Append",
+      "type": "function",
+      "name": "Store.Append()",
+      "filePath": "event/store.go",
+      "summary": "追加一条事件到 JSONL 日志",
+      "tags": [
+        "storage",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Store.SaveCheckpoint",
+      "type": "function",
+      "name": "Store.SaveCheckpoint()",
+      "filePath": "event/store.go",
+      "summary": "保存会话快照到 JSON 文件",
+      "tags": [
+        "storage",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Store.LoadCheckpoint",
+      "type": "function",
+      "name": "Store.LoadCheckpoint()",
+      "filePath": "event/store.go",
+      "summary": "从 JSON 文件恢复会话快照",
+      "tags": [
+        "storage",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:Registry.Handle",
+      "type": "function",
+      "name": "Registry.Handle()",
+      "filePath": "command/registry.go",
+      "summary": "匹配并执行斜杠命令",
+      "tags": [
+        "command",
+        "api"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:LoadPrompt",
+      "type": "function",
+      "name": "LoadPrompt()",
+      "filePath": "agent/prompt.go",
+      "summary": "从 XML 文件加载 prompt 模板并执行变量替换",
+      "tags": [
+        "agent",
+        "prompt"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "func:isHighRiskTool",
+      "type": "function",
+      "name": "isHighRiskTool()",
+      "filePath": "agent/gate.go",
+      "summary": "判断工具是否为高危操作（git_commit/run_shell/write_file/edit_file等）",
+      "tags": [
+        "agent",
+        "security"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:main.go",
+      "target": "file:agent.go",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "file:main.go",
+      "target": "file:agent.go",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "file:main.go",
+      "target": "func:Registry.Handle",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:main.go",
+      "target": "func:AllBuiltInTools",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:main.go",
+      "target": "func:Store.LoadCheckpoint",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:main.go",
+      "target": "func:Manager.Install",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:main.go",
+      "target": "func:MCPManager.Disconnect",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.dispatchToolCalls",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.toolDefinitions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:isHighRiskTool",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:sink.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.RePlan",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.llmSummarize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Session.Snapshot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:input.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.ClearSkill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:LoadPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:cache_shape.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:execution_state.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Agent.PruneStaleToolResults",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:long_memory.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:memory_cache.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "func:Pricing.GetCost",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:hooks.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:helpers.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:install_tools.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:deepseek.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:agent.go",
+      "target": "file:checkpoint.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:Session.Snapshot",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:Agent.toolDefinitions",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:Agent.llmSummarize",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:sink.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:isHighRiskTool",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:Agent.ClearSkill",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:long_memory.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "func:Agent.RePlan",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:input.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:cache_shape.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:execution_state.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "func:Agent.dispatchToolCalls",
+      "target": "file:hooks.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "func:Agent.toolDefinitions",
+      "target": "func:AllBuiltInTools",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.toolDefinitions",
+      "target": "func:NewRunShellTool",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.toolDefinitions",
+      "target": "file:skill.go",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.toolDefinitions",
+      "target": "func:Manager.Install",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.toolDefinitions",
+      "target": "func:MCPManager.Disconnect",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Agent.RePlan",
+      "target": "func:Session.Snapshot",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Agent.RePlan",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.RePlan",
+      "target": "file:sink.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Agent.llmSummarize",
+      "target": "func:Session.Snapshot",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.llmSummarize",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Agent.llmSummarize",
+      "target": "func:Agent.PruneStaleToolResults",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Session.Snapshot",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Session.Snapshot",
+      "target": "func:Pricing.GetCost",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:checkpoint.go",
+      "target": "func:Session.Snapshot",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:checkpoint.go",
+      "target": "func:Store.LoadCheckpoint",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:isHighRiskTool",
+      "target": "func:AllBuiltInTools",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:sink.go",
+      "target": "func:Store.LoadCheckpoint",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:LoadPrompt",
+      "target": "file:prompts_xml",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.ClearSkill",
+      "target": "file:skill.go",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:Agent.ClearSkill",
+      "target": "func:Manager.Install",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:long_memory.go",
+      "target": "func:Store.LoadCheckpoint",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:memory_cache.go",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:memory_cache.go",
+      "target": "file:qiuqiu_global_template",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:memory_cache.go",
+      "target": "file:qiuqiu_project_template",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:NewRunShellTool",
+      "target": "func:AllBuiltInTools",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:MCPManager.Disconnect",
+      "target": "file:client.go",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 0.9
+    },
+    {
+      "source": "func:MCPManager.Disconnect",
+      "target": "func:Agent.toolDefinitions",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:client.go",
+      "target": "func:AllBuiltInTools",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "func:Store.LoadCheckpoint",
+      "target": "file:sink.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "func:Registry.Handle",
+      "target": "file:agent.go",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "func:Registry.Handle",
+      "target": "func:LoadPrompt",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:cleanup.go",
+      "target": "func:AllBuiltInTools",
+      "type": "implements",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:cleanup.go",
+      "target": "func:Registry.Handle",
+      "type": "depends_on",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:storm_test.go",
+      "target": "func:Agent.dispatchToolCalls",
+      "type": "tested_by",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:docs",
+      "target": "file:STRUCTURES.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:docs",
+      "target": "file:OPTIMIZATION_SUMMARY.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:docs",
+      "target": "file:README.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:docs",
+      "target": "file:TODO.md",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:docs",
+      "target": "file:e2e_results",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:reasonix_data",
+      "target": "file:reasonix.toml",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:go.mod",
+      "target": "file:deepseek.go",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:go.mod",
+      "target": "file:client.go",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:go.mod",
+      "target": "func:NewRunShellTool",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:go.mod",
+      "target": "file:cleanup.go",
+      "type": "documents",
+      "direction": "forward",
+      "weight": 0.5
+    }
+  ],
+  "layers": [
+    {
+      "id": "layer-entry",
+      "name": "Entry Point",
+      "description": "程序入口和 CLI 层",
+      "nodeIds": [
+        "file:main.go",
+        "file:go.mod",
+        "file:command/registry.go"
+      ]
+    },
+    {
+      "id": "layer-agent",
+      "name": "Agent Core",
+      "description": "Agent 核心：循环、会话、工具分发、规划、压缩",
+      "nodeIds": [
+        "file:agent.go",
+        "file:agent/run.go",
+        "file:agent/tools.go",
+        "file:agent/session.go",
+        "file:agent/plan.go",
+        "file:agent/compact.go",
+        "file:agent/gate.go",
+        "file:agent/sink.go",
+        "file:agent/input.go",
+        "file:agent/prompt.go",
+        "file:agent/skill.go",
+        "file:agent/long_memory.go",
+        "file:agent/memory_cache.go",
+        "file:agent/cache_shape.go",
+        "file:agent/execution_state.go",
+        "file:agent/prune.go",
+        "file:agent/hooks.go",
+        "file:agent/helpers.go",
+        "file:agent/install_tools.go",
+        "file:agent/deepseek.go",
+        "file:agent/checkpoint.go",
+        "file:agent/usage.go",
+        "file:agent/storm_test.go"
+      ]
+    },
+    {
+      "id": "layer-tool",
+      "name": "Tool Layer",
+      "description": "工具实现层：文件操作、搜索、Shell、Git、Web 等",
+      "nodeIds": [
+        "file:tool/struct.go",
+        "file:tool/all_tools.go",
+        "file:cleanup/cleanup.go"
+      ]
+    },
+    {
+      "id": "layer-external",
+      "name": "External Integration",
+      "description": "外部集成：MCP、Skill 管理器",
+      "nodeIds": [
+        "file:mcp/manager.go",
+        "file:mcp/client.go",
+        "file:skill/skill.go",
+        "file:skill/manager.go"
+      ]
+    },
+    {
+      "id": "layer-storage",
+      "name": "Storage Layer",
+      "description": "持久化层：事件存储、检查点",
+      "nodeIds": [
+        "file:event/store.go",
+        "file:agent/checkpoint.go"
+      ]
+    },
+    {
+      "id": "layer-docs",
+      "name": "Documentation",
+      "description": "文档和参考资料",
+      "nodeIds": [
+        "file:docs",
+        "file:STRUCTURES.md",
+        "file:OPTIMIZATION_SUMMARY.md",
+        "file:README.md",
+        "file:TODO.md",
+        "file:e2e_results",
+        "file:reasonix_data",
+        "file:reasonix.toml",
+        "file:prompts_xml",
+        "file:qiuqiu_global_template",
+        "file:qiuqiu_project_template",
+        "file:run_e2e_self_sh"
+      ]
+    }
+  ],
+  "tour": [
+    {
+      "order": 1,
+      "title": "入口",
+      "description": "从 main.go 开始，了解程序如何启动",
+      "nodeIds": [
+        "file:main.go"
+      ]
+    },
+    {
+      "order": 2,
+      "title": "Agent 核心",
+      "description": "理解 Agent 的核心循环和工具分发机制",
+      "nodeIds": [
+        "file:agent.go",
+        "file:agent/run.go",
+        "file:agent/tools.go"
+      ]
+    },
+    {
+      "order": 3,
+      "title": "会话管理",
+      "description": "学习会话历史和上下文管理",
+      "nodeIds": [
+        "file:agent/session.go",
+        "file:agent/compact.go"
+      ]
+    },
+    {
+      "order": 4,
+      "title": "工具层",
+      "description": "探索所有内置工具和 MCP 集成",
+      "nodeIds": [
+        "file:tool/struct.go",
+        "file:tool/all_tools.go",
+        "file:mcp/manager.go"
+      ]
+    },
+    {
+      "order": 5,
+      "title": "规划与反思",
+      "description": "了解 Agent 的规划、反思和重规划能力",
+      "nodeIds": [
+        "file:agent/plan.go"
+      ]
+    },
+    {
+      "order": 6,
+      "title": "长期记忆",
+      "description": "探索 Skill 人格和长期记忆系统",
+      "nodeIds": [
+        "file:agent/skill.go",
+        "file:agent/long_memory.go"
+      ]
+    },
+    {
+      "order": 7,
+      "title": "文档",
+      "description": "查看开发文档和参考资料",
+      "nodeIds": [
+        "file:docs"
+      ]
+    }
+  ]
+}

@@ -300,7 +300,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 		return result
 	case GateConfirm:
 		a.debugf("  🔐 %s：%s(%s)\n", reason, tc.Function.Name, tc.Function.Arguments)
-		a.emitPrompt("  确认执行？[Y/n] ")
+		a.emitConfirmRequest(tc.Function.Name, tc.Function.Arguments, reason)
 		if !a.confirm() {
 			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
 			a.noticef("  🚫 %s\n", result)

@@ -1,0 +1,19 @@
+[
+  {"id": "file:main.go", "type": "file", "name": "main.go", "filePath": "main.go", "summary": "Agent 主入口，解析命令行参数、读取 API Key、初始化 Agent 并启动交互循环", "tags": ["entry", "cli"], "complexity": "simple"},
+  {"id": "file:main_test.go", "type": "file", "name": "main_test.go", "filePath": "main_test.go", "summary": "main.go 的集成测试，验证完整交互流程", "tags": ["test", "integration"], "complexity": "simple"},
+  {"id": "file:go.mod", "type": "file", "name": "go.mod", "filePath": "go.mod", "summary": "Go module 定义：module agentdemo，依赖 go-openai 和 mcp-go", "tags": ["config", "dependency"], "complexity": "simple"},
+  {"id": "file:STRUCTURES.md", "type": "file", "name": "STRUCTURES.md", "filePath": "STRUCTURES.md", "summary": "核心数据结构速查文档，描述 Tool 结构体和三个固定套路", "tags": ["docs", "reference"], "complexity": "simple"},
+  {"id": "file:README.md", "type": "file", "name": "README.md", "filePath": "README.md", "summary": "项目总览：从零手写 Agent 系统的实战产物，基于 Go 实现", "tags": ["docs", "overview"], "complexity": "simple"},
+  {"id": "file:OPTIMIZATION_SUMMARY.md", "type": "file", "name": "OPTIMIZATION_SUMMARY.md", "filePath": "OPTIMIZATION_SUMMARY.md", "summary": "性能优化总结文档", "tags": ["docs"], "complexity": "simple"},
+  {"id": "file:TODO.md", "type": "file", "name": "TODO.md", "filePath": "TODO.md", "summary": "待办事项清单", "tags": ["docs"], "complexity": "simple"},
+  {"id": "file:reasonix.toml", "type": "file", "name": "reasonix.toml", "filePath": "reasonix.toml", "summary": "Reasonix 配置", "tags": ["config"], "complexity": "simple"},
+  {"id": "file:cleanup.go", "type": "file", "name": "cleanup.go", "filePath": "cleanup/cleanup.go", "summary": "垃圾文件扫描清理包，支持 /cleanup 命令", "tags": ["tool", "cleanup"], "complexity": "simple"},
+  {"id": "file:registry.go", "type": "file", "name": "registry.go", "filePath": "command/registry.go", "summary": "斜杠命令注册表，实现 /help /replay 等命令分发", "tags": ["command", "cli"], "complexity": "simple"},
+  {"id": "file:store.go", "type": "file", "name": "store.go", "filePath": "event/store.go", "summary": "事件存储，JSON Lines 格式，支持 Checkpoint 快照", "tags": ["storage", "session"], "complexity": "moderate"},
+  {"id": "file:client.go", "type": "file", "name": "client.go", "filePath": "mcp/client.go", "summary": "MCP 客户端，连接外部 MCP 服务器", "tags": ["mcp", "external"], "complexity": "moderate"},
+  {"id": "file:manager.go", "type": "file", "name": "manager.go", "filePath": "mcp/manager.go", "summary": "MCP 管理器，热插拔连接/断开 MCP 服务器", "tags": ["mcp", "lifecycle"], "complexity": "moderate"},
+  {"id": "file:skill.go", "type": "file", "name": "skill.go", "filePath": "skill/skill.go", "summary": "Skill 定义：Name/Description/SystemPrompt/ToolWhitelist/Rules", "tags": ["skill", "persona"], "complexity": "simple"},
+  {"id": "file:manager.go:skill", "type": "file", "name": "manager.go (skill)", "filePath": "skill/manager.go", "summary": "Skill 管理器：线程安全的 Skill 生命周期管理（load/list/find/install）", "tags": ["skill", "lifecycle"], "complexity": "moderate"},
+  {"id": "file:struct.go", "type": "file", "name": "struct.go", "filePath": "tool/struct.go", "summary": "Tool 结构体定义和 AllBuiltInTools 工厂函数", "tags": ["tool", "interface"], "complexity": "simple"},
+  {"id": "file:all_tools.go", "type": "file", "name": "all_tools.go", "filePath": "tool/all_tools.go", "summary": "所有内置工具实现：read_file/write_file/edit_file/todo_write/search_files/glob/grep/code_search/web_fetch/git_commit/run_shell/delete_range/multi_edit", "tags": ["tool", "implementation"], "complexity": "complex"}
+]

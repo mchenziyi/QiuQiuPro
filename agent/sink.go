@@ -16,6 +16,7 @@ const (
 	EventNotice                      // 流程 / 状态提示（自带 emoji 与换行）
 	EventPrompt                      // 需要用户输入的提示（不换行）
 	EventReasoning                   // 思考模式（thinking）的 reasoning 增量（逐字、不换行、灰显）
+	EventConfirmRequest              // 需要用户确认高危操作
 )
 
 // Event 是 Agent 运行过程中产生的一条输出事件。
@@ -98,6 +99,13 @@ func (a *Agent) emitToolCall(name, args string) {
 }
 func (a *Agent) emitToolResult(name, result string) {
 	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true})
+}
+
+// emitConfirmRequest 输出高危操作确认请求。SSE Sink 转为 confirm_request 事件，
+// UI 收到后展示 Approve/Reject 按钮。
+func (a *Agent) emitConfirmRequest(name, args, reason string) {
+	a.emit(Event{Kind: EventConfirmRequest, Name: name, Text: args, Verbose: false})
+	_ = reason
 }
 
 // emitPrompt 输出需要用户输入的提示（不换行）。

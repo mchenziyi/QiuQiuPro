@@ -112,7 +112,30 @@ evtSource.addEventListener('state', e => {
 evtSource.addEventListener('done', () => {
   btn.textContent = '发送';
   btn.onclick = sendMsg;
+  pendingConfirm = null;
 });
+
+// Confirm request — 高危操作确认
+let pendingConfirm = null;
+evtSource.addEventListener('confirm_request', e => {
+  const d = JSON.parse(e.data);
+  pendingConfirm = d;
+  const insp = document.getElementById('inspector-content');
+  insp.innerHTML =
+    '<div style="background:#282420;border-radius:6px;padding:12px;margin-top:8px">' +
+    '<div style="color:#B8943C;font-weight:bold;margin-bottom:8px">⚠ 需要确认</div>' +
+    '<div style="color:#E5E5EA;margin-bottom:4px"><strong>' + d.tool_name + '</strong></div>' +
+    '<div style="color:#8E8E93;font-size:11px;margin-bottom:12px;white-space:pre-wrap">' + (typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments, null, 2)) + '</div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button onclick="confirmAction(true)" style="background:#2C5F3A;color:#A0E0A0;border:none;border-radius:6px;padding:6px 20px;font-size:12px;cursor:pointer">Approve</button>' +
+    '<button onclick="confirmAction(false)" style="background:#3A3A3C;color:#8E8E93;border:none;border-radius:6px;padding:6px 20px;font-size:12px;cursor:pointer">Reject</button>' +
+    '</div></div>';
+});
+function confirmAction(approve) {
+  pendingConfirm = null;
+  document.getElementById('inspector-content').textContent = '已确认';
+  fetch('/api/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approve}) });
+}
 
 let lastAssistant = null;
 function addMsg(type, text) {

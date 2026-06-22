@@ -45,7 +45,14 @@ func (a *Agent) readLine(cancelOnInterrupt bool) (string, bool) {
 	}
 }
 
+// SetConfirmChan 设置 Web 模式的确认通道。设置后 GateConfirm 将通过通道等待用户批准，
+// 而非读取 stdin。传入 nil 恢复 stdin 模式。
+func (a *Agent) SetConfirmChan(ch chan bool) { a.confirmChan = ch }
+
 func (a *Agent) confirm() bool {
+	if a.confirmChan != nil {
+		return <-a.confirmChan
+	}
 	line, ok := a.readLine(true)
 	if !ok {
 		return false
