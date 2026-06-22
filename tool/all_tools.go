@@ -130,10 +130,17 @@ func NewEditFileTool() Tool {
 			if n > 1 {
 				return "", fmt.Errorf("old_string 出现 %d 次", n)
 			}
-			if err := os.WriteFile(p.Path, []byte(strings.Replace(content, p.OldString, p.NewString, 1)), 0644); err != nil {
+			// 计算 diff
+			before := content
+			after := strings.Replace(content, p.OldString, p.NewString, 1)
+			diff := ComputeLineDiff(before, after, p.Path, 3)
+			diffJSON, _ := json.Marshal(diff)
+
+			if err := os.WriteFile(p.Path, []byte(after), 0644); err != nil {
 				return "", fmt.Errorf("写入失败: %v", err)
 			}
-			return fmt.Sprintf("已编辑 %s", p.Path), nil
+			result := fmt.Sprintf(`{"text":"已编辑 %s","diff":%s}`, p.Path, string(diffJSON))
+			return result, nil
 		},
 	}
 }

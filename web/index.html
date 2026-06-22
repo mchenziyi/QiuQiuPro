@@ -90,6 +90,9 @@ evtSource.addEventListener('tool_call', e => {
 evtSource.addEventListener('tool_result', e => {
   const d = JSON.parse(e.data);
   updateToolRow(d.name, '✓', d.result || '');
+  if (d.diff) {
+    renderDiff(d.diff);
+  }
 });
 evtSource.addEventListener('notice', e => {
   const d = JSON.parse(e.data);
@@ -278,6 +281,32 @@ function updateToolRow(name, status, result) {
 }
 function toggleTool(el) {
   el.classList.toggle('open');
+}
+
+// 渲染 diff 到 Inspector 面板
+function renderDiff(diff) {
+  const insp = document.getElementById('inspector-content');
+  let html = '<div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:#E5E5EA">Diff</div>';
+  html += '<div style="font-size:11px;color:#3B82F6;margin-bottom:8px">' + escapeHtml(diff.path) + '</div>';
+  (diff.hunks || []).forEach(h => {
+    html += '<div style="background:#1C1C1E;border-radius:4px;margin-bottom:6px;overflow:hidden">';
+    html += '<div style="background:#252527;padding:4px 8px;font-size:10px;color:#8E8E93">@@ -' + h.old_start + ' +' + h.new_start + ' @@</div>';
+    (h.lines || []).forEach(l => {
+      if (l.op === 'add') {
+        html += '<div style="background:#1A3D1A;padding:2px 8px;font-size:11px;color:#50C878">+ ' + escapeHtml(l.text) + '</div>';
+      } else if (l.op === 'del') {
+        html += '<div style="background:#3D1A1A;padding:2px 8px;font-size:11px;color:#FF6B6B">− ' + escapeHtml(l.text) + '</div>';
+      } else {
+        html += '<div style="padding:2px 8px;font-size:11px;color:#636366">  ' + escapeHtml(l.text) + '</div>';
+      }
+    });
+    html += '</div>';
+  });
+  insp.innerHTML = html;
+}
+function escapeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function sendMsg() {

@@ -173,7 +173,7 @@ func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCa
 
 	for i, tc := range toolCalls {
 		a.recordEvent("tool_result", results[i], tc.Function.Name)
-		a.emitToolResult(tc.Function.Name, truncate(results[i], 100))
+		a.emitToolResultWithDiffIfJSON(tc.Function.Name, results[i])
 		a.session.Add(openai.ChatCompletionMessage{
 			Role: "tool", Content: results[i], ToolCallID: tc.ID, Name: tc.Function.Name,
 		})

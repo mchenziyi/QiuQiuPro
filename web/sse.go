@@ -122,14 +122,17 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 		}.Marshal()}
 
 	case agent.EventToolResult:
-		return [][]byte{SSEEvent{
-			Type: "tool_result",
-			Data: map[string]interface{}{
-				"id":     ev.Name,
-				"name":   ev.Name,
-				"result": ev.Text,
-			},
-		}.Marshal()}
+		data := map[string]interface{}{
+			"id":     ev.Name,
+			"name":   ev.Name,
+			"result": ev.Text,
+		}
+		if ev.Extra != nil {
+			if d, ok := ev.Extra["diff"]; ok {
+				data["diff"] = d
+			}
+		}
+		return [][]byte{SSEEvent{Type: "tool_result", Data: data}.Marshal()}
 
 	case agent.EventNotice:
 		// 跳过 verbose 通知（如缓存诊断日志），只在控制台展示

@@ -1,6 +1,9 @@
 package agent
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // 事件驱动输出：Agent 不再到处 fmt.Print / debugf 直接打控制台，而是把
 // 运行过程中的「发生了什么」抽象成 Event 交给 Sink，由 Sink 决定「怎么呈现」——
@@ -29,6 +32,7 @@ type Event struct {
 	Name    string
 	Text    string
 	Verbose bool
+	Extra   map[string]interface{} // 可选的结构化扩展数据（如 diff）
 }
 
 // Sink 接收 Agent 的输出事件并负责呈现。实现需对并发安全持保守态度，
@@ -99,6 +103,24 @@ func (a *Agent) emitToolCall(name, args string) {
 }
 func (a *Agent) emitToolResult(name, result string) {
 	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true})
+}
+
+// emitToolResultWithDiff 输出带结构化 diff 的工具结果。diffData 为前端可直接消费的 JSON 对象。
+func (a *Agent) emitToolResultWithDiff(name, result string, diffData map[string]interface{}) {
+	a.emit(Event{Kind: EventToolResult, Name: name, Text: result, Verbose: true, Extra: map[string]interface{}{"diff": diffData}})
+}
+
+// emitToolResultWithDiffIfJSON 检查 result 是否为含 diff 的 JSON，若是则拆分发出；否则走普通 emitToolResult。
+func (a *Agent) emitToolResultWithDiffIfJSON(name, result string) {
+	var wrapped struct {
+		Text string                 `json:"text"`
+		Diff map[string]interface{} `json:"diff"`
+	}
+	if err := json.Unmarshal([]byte(result), &wrapped); err == nil && wrapped.Text != "" && wrapped.Diff != nil {
+		a.emitToolResultWithDiff(name, truncate(wrapped.Text, 100), wrapped.Diff)
+		return
+	}
+	a.emitToolResult(name, truncate(result, 100))
 }
 
 // emitConfirmRequest 输出高危操作确认请求。SSE Sink 转为 confirm_request 事件，
