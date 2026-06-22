@@ -132,6 +132,10 @@ func (s *SSESink) eventToSSE(ev agent.Event) [][]byte {
 		}.Marshal()}
 
 	case agent.EventNotice:
+		// 跳过 verbose 通知（如缓存诊断日志），只在控制台展示
+		if ev.Verbose {
+			return nil
+		}
 		return [][]byte{SSEEvent{Type: "notice", Data: map[string]string{"text": ev.Text}}.Marshal()}
 
 	case agent.EventConfirmRequest:
@@ -209,6 +213,7 @@ type Server struct {
 	mu         sync.Mutex
 	running    bool
 	confirmCh  chan bool
+	runMu      sync.Mutex // 确保同一时间只有一个 Run 在执行
 }
 
 // NewServer 创建一个 Web UI Server。
@@ -323,14 +328,15 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		// SSE 推送用户消息回显
 		s.sink.Broadcast(SSEEvent{Type: "user_message", Data: map[string]string{"text": req.Text}}.Marshal())
 
-		// 更新状态并启动 Run
 		s.sink.broadcastState(func() StateSnapshot {
 			st := s.buildState()
 			st.Running = true
 			return st
 		}())
 
+		s.runMu.Lock()
 		_, err := s.agent.Run(context.Background(), req.Text)
+		s.runMu.Unlock()
 
 		// Run 结束，发送 done 事件并更新状态
 		if err != nil {
@@ -412,8 +418,12 @@ type SessionInfo struct {
 
 // GET /api/sessions — 列出历史会话
 func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
-	home, _ := os.UserHomeDir()
-	sessionsDir := filepath.Join(home, ".qiuqiu", "sessions")
+	sessionsDir := ".reasonix/sessions"
+	if _, err := os.Stat(sessionsDir); os.IsNotExist(err) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]SessionInfo{})
+		return
+	}
 	entries, err := os.ReadDir(sessionsDir)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
