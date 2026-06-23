@@ -194,6 +194,7 @@ type StateSnapshot struct {
 	Mode      string `json:"mode"`
 	Skill     string `json:"skill"`
 	SessionID string `json:"session_id"`
+	PlanMode  bool   `json:"plan_mode"`
 	Running   bool   `json:"running"`
 	CacheHit  int64  `json:"cache_hit"`
 	CacheMiss int64  `json:"cache_miss"`
@@ -241,6 +242,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc("/api/sessions/switch", s.handleSessionSwitch)
 	s.mux.HandleFunc("/api/sessions/new", s.handleSessionNew)
 	s.mux.HandleFunc("/api/history", s.handleHistory)
+	s.mux.HandleFunc("/api/tools", s.handleTools)
 	s.mux.HandleFunc("/", s.handleStatic)
 }
 
@@ -402,6 +404,7 @@ func (s *Server) buildState() StateSnapshot {
 		Mode:      s.agent.CurrentMode(),
 		Skill:     s.agent.CurrentSkillName(),
 		SessionID: s.agent.SessionID(),
+		PlanMode:  s.agent.IsPlanMode(),
 		Running:   s.running.Load(),
 		CacheHit:  hit,
 		CacheMiss: miss,
@@ -516,6 +519,26 @@ func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(out)
+}
+
+// GET /api/tools — 返回当前可用工具列表
+func (s *Server) handleTools(w http.ResponseWriter, r *http.Request) {
+	tools := s.agent.ListTools()
+	type ToolInfo struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		ReadOnly    bool   `json:"read_only"`
+	}
+	var out []ToolInfo
+	for _, t := range tools {
+		out = append(out, ToolInfo{Name: t.Name, Description: t.Description, ReadOnly: t.ReadOnly})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if out == nil {
+		w.Write([]byte("[]"))
+		return
+	}
 	json.NewEncoder(w).Encode(out)
 }
 

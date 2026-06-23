@@ -163,6 +163,15 @@ func (a *Agent) SessionID() string                  { return a.session.ID }
 func (a *Agent) SessionMessages() []openai.ChatCompletionMessage { return a.session.Messages() }
 func (a *Agent) EventStore() *event.Store           { return a.store }
 func (a *Agent) TrimMessages()                      { a.session.Trim() }
+func (a *Agent) IsPlanMode() bool                   { return a.planMode.Load() }
+
+// ListTools 返回当前可用工具的快照（不暴露内部 map 引用）。
+func (a *Agent) ListTools() []tool.Tool {
+	tools := a.availableTools()
+	out := make([]tool.Tool, len(tools))
+	copy(out, tools)
+	return out
+}
 
 // SpawnSubAgent 派生一个共享客户端 / 工具 / 存储的子 Agent，独立会话执行一个子任务。
 func (a *Agent) SpawnSubAgent(ctx context.Context, task string) (string, error) {

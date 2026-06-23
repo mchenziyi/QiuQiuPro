@@ -386,6 +386,19 @@ function updateToolRow(id, status, result) {
 }
 function toggleTool(el) {
   el.classList.toggle('open');
+  // 在 Inspector 中展示工具详情
+  const name = el.querySelector('.tool-name')?.textContent || '';
+  const status = el.querySelector('.tool-ok')?.textContent || '';
+  const body = el.querySelector('.tool-row-body');
+  const args = body ? body.textContent : '';
+  const insp = document.getElementById('inspector-content');
+  let html = '<div style="font-size:13px;font-weight:bold;margin-bottom:8px;color:var(--text-primary)">🔧 ' + name + '</div>';
+  html += '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:12px">状态: ' + status + '</div>';
+  if (args) {
+    html += '<div style="font-size:11px;font-weight:bold;color:var(--text-muted);margin-bottom:4px">参数/结果</div>';
+    html += '<div style="background:var(--code-bg);padding:8px;border-radius:4px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap;word-break:break-all">' + escapeHtml(args) + '</div>';
+  }
+  insp.innerHTML = html;
 }
 
 // 字级 diff：对比两段文本，返回 {delHtml, addHtml} 各自的行内高亮
