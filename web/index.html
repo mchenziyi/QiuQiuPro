@@ -116,7 +116,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
   <div id="main">
     <div id="statusbar">
       <span class="brand">● 球球</span>
-      <span class="status-item" id="st-mode">plan</span>
+      <span class="status-item" id="st-mode" style="cursor:pointer" title="点击切换 ask/plan">ask</span>
       <span class="status-item" id="st-skill">全栈开发</span>
       <span class="status-item" id="st-session">—</span>
       <span class="status-item" id="st-tokens">↑0 ↓0</span>
@@ -187,6 +187,7 @@ evtSource.addEventListener('error', e => {
 evtSource.addEventListener('state', e => {
   const d = safeParseSSE(e); if (!d) return;
   document.getElementById('st-mode').textContent = d.mode;
+  document.getElementById('st-mode').onclick = function() { toggleMode(d.mode); };
   document.getElementById('st-skill').textContent = d.skill;
   document.getElementById('st-session').textContent = d.session_id;
   document.getElementById('st-tokens').textContent = '↑' + d.cache_hit + ' ↓' + d.cache_miss;
@@ -473,6 +474,10 @@ function stopRun() {
   btn.textContent = '停止中…';
   btn.onclick = null;
   fetch('/api/interrupt', { method: 'POST' });
+}
+function toggleMode(current) {
+  const target = current === 'ask' ? '/mode plan' : '/mode ask';
+  fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text: target}) });
 }
 btn.onclick = sendMsg;
 input.addEventListener('keydown', e => {
