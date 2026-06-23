@@ -327,6 +327,21 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 拦截模式切换命令，直接设置 mode 不经过 LLM
+	if strings.HasPrefix(req.Text, "/mode ") {
+		mode := strings.TrimSpace(strings.TrimPrefix(req.Text, "/mode "))
+		if mode == "plan" || mode == "ask" {
+			s.runMu.Lock()
+			s.agent.SetMode(mode)
+			s.runMu.Unlock()
+			s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "已切换到 " + mode + " 模式"}}.Marshal())
+			s.sink.broadcastState(s.buildState())
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(map[string]string{"status": "ok", "mode": mode})
+			return
+		}
+	}
+
 	// 在后台 goroutine 中执行 Agent.Run
 	go func() {
 		// SSE 推送用户消息回显
