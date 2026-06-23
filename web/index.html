@@ -226,7 +226,23 @@ evtSource.addEventListener('confirm_request', e => {
   confirmBar.style.display = 'flex';
   // Inspector 也提示，但不放按钮
   document.getElementById('inspector-content').innerHTML =
-    '<div style="color:#B8943C">⚠ 高危操作等待确认，请在输入框上方审批</div>';
+    '<div style="color:var(--yellow-text)">⚠ 高危操作等待确认，请在输入框上方审批</div>';
+});
+// Plan 方案展示
+evtSource.addEventListener('plan_proposal', e => {
+  const d = safeParseSSE(e); if (!d) return;
+  const plan = d.plan || {};
+  const steps = plan.steps || [];
+  let html = '<div style="font-size:13px;font-weight:bold;color:var(--text-primary);margin-bottom:8px">📋 方案</div>';
+  html += '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">目标: ' + escapeHtml(plan.goal || '') + '</div>';
+  steps.forEach((s, i) => {
+    html += '<div style="background:var(--bg-surface);padding:6px 10px;border-radius:4px;margin-bottom:4px;font-size:12px;color:var(--text-primary)">' +
+      (i+1) + '. ' + escapeHtml(s.desc || s.Desc || '') + '</div>';
+  });
+  if (d.research) {
+    html += '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap">' + escapeHtml(d.research) + '</div>';
+  }
+  document.getElementById('inspector-content').innerHTML = html;
 });
 function confirmAction(approve) {
   pendingConfirm = null;
@@ -320,13 +336,15 @@ fetch('/api/history').then(r => r.json()).then(msgs => {
 loadSessions();
 
 
+function scrollToBottom() { requestAnimationFrame(function() { thread.scrollTop = thread.scrollHeight; }); }
+
 let lastAssistant = null;
 function addMsg(type, text) {
   const div = document.createElement('div');
   div.className = 'msg msg-' + type;
   div.textContent = text;
   thread.appendChild(div);
-  thread.scrollTop = thread.scrollHeight;
+  scrollToBottom();
   lastAssistant = null;
 }
 function appendAssistant(text) {
@@ -337,7 +355,7 @@ function appendAssistant(text) {
     lastAssistant = div;
   }
   lastAssistant.textContent += text;
-  thread.scrollTop = thread.scrollHeight;
+  scrollToBottom();
 }
 function appendThinking(text) {
   // Thinking block - append to the last one if it's still open
@@ -350,7 +368,7 @@ function appendThinking(text) {
     thread.appendChild(t);
   }
   t.textContent += text;
-  thread.scrollTop = thread.scrollHeight;
+  scrollToBottom();
 }
 function addToolRow(name, args, status, id) {
   const div = document.createElement('div');
@@ -366,7 +384,7 @@ function addToolRow(name, args, status, id) {
     '<span class="tool-ok">' + statusIcon + '</span></div>' +
     '<div class="tool-row-body">' + (typeof args === 'string' ? args : JSON.stringify(args, null, 2)) + '</div>';
   thread.appendChild(div);
-  thread.scrollTop = thread.scrollHeight;
+  scrollToBottom();
 }
 function updateToolRow(id, status, result) {
   let row;

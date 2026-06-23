@@ -342,31 +342,93 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 在后台 goroutine 中执行 Agent.Run
+	// 在后台 goroutine 中执行
 	go func() {
-		// SSE 推送用户消息回显
 		s.sink.Broadcast(SSEEvent{Type: "user_message", Data: map[string]string{"text": req.Text}}.Marshal())
 
 		s.running.Store(true)
 		s.sink.broadcastState(s.buildState())
 
 		s.runMu.Lock()
-		_, err := s.agent.Run(context.Background(), req.Text)
-		s.runMu.Unlock()
-		s.running.Store(false)
+		defer s.runMu.Unlock()
+		defer func() {
+			s.running.Store(false)
+			s.sink.Broadcast(SSEEvent{Type: "done", Data: struct{}{}}.Marshal())
+			s.sink.broadcastState(s.buildState())
+		}()
 
-		// Run 结束，发送 done 事件并更新状态
-		if err != nil {
-			s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": err.Error()}}.Marshal())
+		if s.agent.CurrentMode() == "plan" {
+			s.runPlanFlow(req.Text)
+		} else {
+			_, err := s.agent.Run(context.Background(), req.Text)
+			if err != nil {
+				s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": err.Error()}}.Marshal())
+			}
 		}
-		s.sink.Broadcast(SSEEvent{Type: "done", Data: struct{}{}}.Marshal())
-
-		s.sink.broadcastState(s.buildState())
 	}()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusAccepted)
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted"})
+}
+
+// runPlanFlow 执行 Plan 模式的全流程：调研 → 生成方案 → 审批 → 执行
+func (s *Server) runPlanFlow(goal string) {
+	ctx := context.Background()
+
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "📋 正在调研方案...（只读模式，不会修改代码）"}}.Marshal())
+	s.agent.SetPlanMode(true)
+
+	research, err := s.agent.Run(ctx, goal)
+	if err != nil {
+		s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": "调研失败: " + err.Error()}}.Marshal())
+		s.agent.SetPlanMode(false)
+		return
+	}
+
+	planGoal := goal
+	if strings.TrimSpace(research) != "" {
+		planGoal = goal + "\n\n调研摘要（供规划参考）：\n" + research
+	}
+
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "📋 正在生成执行计划..."}}.Marshal())
+	plan, err := s.agent.GeneratePlan(ctx, planGoal)
+	if err != nil {
+		s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": "规划失败: " + err.Error()}}.Marshal())
+		s.agent.SetPlanMode(false)
+		return
+	}
+	plan, _ = s.agent.ReviewPlan(ctx, plan)
+
+	// 展示方案，等待用户审批
+	s.sink.Broadcast(SSEEvent{Type: "plan_proposal", Data: map[string]interface{}{
+		"research": research,
+		"plan":     plan,
+	}}.Marshal())
+
+	// 发送确认请求
+	s.sink.Broadcast(SSEEvent{Type: "confirm_request", Data: map[string]interface{}{
+		"tool_name": "plan_execution",
+		"arguments": "批准执行此方案",
+		"reason":    "方案确定后将开始执行各步骤",
+	}}.Marshal())
+
+	// 等待审批
+	approved := <-s.confirmCh
+	if !approved {
+		s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "❌ 方案已取消"}}.Marshal())
+		s.agent.SetPlanMode(false)
+		return
+	}
+
+	s.agent.SetPlanMode(false)
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "✅ 方案已批准，开始执行..."}}.Marshal())
+
+	if err := s.agent.ExecutePlan(ctx, plan); err != nil {
+		s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": "执行失败: " + err.Error()}}.Marshal())
+		return
+	}
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "🎉 执行完成！"}}.Marshal())
 }
 
 // POST /api/interrupt — 中断当前执行
