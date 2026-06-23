@@ -358,17 +358,26 @@ function appendAssistant(text) {
   scrollToBottom();
 }
 function appendThinking(text) {
-  // Thinking block - append to the last one if it's still open
   let t = thread.querySelector('.msg-thinking:last-child');
-  if (!t || t.dataset.folded !== 'open') {
+  if (!t || t.dataset.folded === 'closed') {
     t = document.createElement('div');
     t.className = 'msg msg-thinking';
     t.dataset.folded = 'open';
-    t.textContent = '▶ ';
+    t.innerHTML = '<div class="thinking-header" style="cursor:pointer;user-select:none" onclick="toggleThinking(this.parentElement);event.stopPropagation()">▶ 思考中…</div><div class="thinking-body" style="display:none;margin-top:4px"></div>';
     thread.appendChild(t);
   }
-  t.textContent += text;
+  const body = t.querySelector('.thinking-body');
+  if (body) body.textContent += text;
   scrollToBottom();
+}
+function toggleThinking(el) {
+  const body = el.querySelector('.thinking-body');
+  const header = el.querySelector('.thinking-header');
+  if (!body || !header) return;
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  header.textContent = isOpen ? '▶ 思考中…' : '▼ 思考过程';
+  el.dataset.folded = isOpen ? 'closed' : 'open';
 }
 function addToolRow(name, args, status, id) {
   const div = document.createElement('div');
