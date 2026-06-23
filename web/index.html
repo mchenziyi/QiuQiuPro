@@ -87,6 +87,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 #statusbar { height: 36px; background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); display: flex; align-items: center; padding: 0 14px; font-size: 11px; color: var(--text-secondary); }
 #thread { flex: 1; overflow-y: auto; padding: 16px 20px; }
+.turn-group { margin-bottom: 6px; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+.turn-group-header { background: var(--bg-surface); padding: 6px 10px; font-size: 11px; color: var(--text-secondary); cursor: pointer; user-select: none; display: flex; align-items: center; gap: 6px; }
+.turn-group-body { padding: 0; }
+.turn-group.collapsed .turn-group-body { display: none; }
+.turn-group .msg-thinking { margin-bottom: 0; border-radius: 0; border-top: 1px solid var(--border-color); }
+.turn-group .tool-row { margin-bottom: 0; border-radius: 0; }
 #composer { height: 56px; margin: 8px 16px; background: var(--composer-bg); border: 1px solid var(--border-light); border-radius: 8px; display: flex; align-items: center; padding: 0 16px; }
 #inspector { width: 360px; background: var(--bg-secondary); border-left: 1px solid var(--border-color); padding: 16px; overflow-y: auto; }
 .msg { margin-bottom: 8px; }
@@ -224,9 +230,6 @@ evtSource.addEventListener('confirm_request', e => {
   confirmTool.textContent = d.tool_name;
   confirmDesc.textContent = typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments);
   confirmBar.style.display = 'flex';
-  // Inspector 也提示，但不放按钮
-  document.getElementById('inspector-content').innerHTML =
-    '<div style="color:var(--yellow-text)">⚠ 高危操作等待确认，请在输入框上方审批</div>';
 });
 // Plan 方案展示
 evtSource.addEventListener('plan_proposal', e => {
@@ -336,16 +339,67 @@ fetch('/api/history').then(r => r.json()).then(msgs => {
 loadSessions();
 
 
-function scrollToBottom() { requestAnimationFrame(function() { thread.scrollTop = thread.scrollHeight; }); }
+function renderMarkdown(text) {
+  if (!text) return '';
+  // Escape HTML special chars first
+  let html = text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // Code blocks (``` ... ```) — must escape inside too
+  html = html.replace(/```(\w*)\n?([\s\S]*?)```/g, function(_, lang, code) {
+    return '<pre><code class="lang-'+lang+'">'+code.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>')+'</code></pre>';
+  });
+  // Inline code
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Bold **text**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Headers
+  html = html.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^# (.+)$/gm, '<h2>$1</h2>');
+  // Unordered lists
+  html = html.replace(/^[\*\-] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Horizontal rules
+  html = html.replace(/^---$/gm, '<hr>');
+  // Line breaks (double newline = paragraph, single newline = br)
+  html = html.replace(/\n\n/g, '</p><p>');
+  html = html.replace(/\n/g, '<br>');
+  html = '<p>' + html + '</p>';
+  // Cleanup empty paragraphs
+  html = html.replace(/<p><\/p>/g, '');
+  return html;
+}
 
 let lastAssistant = null;
+let currentTurnGroup = null;
+
+function ensureTurnGroup() {
+  if (!currentTurnGroup || !document.body.contains(currentTurnGroup)) {
+    const group = document.createElement('div');
+    group.className = 'turn-group';
+    group.innerHTML = '<div class="turn-group-header" onclick="toggleTurnGroup(this.parentElement)">▶ 执行过程</div><div class="turn-group-body"></div>';
+    thread.appendChild(group);
+    currentTurnGroup = group;
+  }
+  return currentTurnGroup;
+}
+function toggleTurnGroup(el) {
+  el.parentElement.classList.toggle('collapsed');
+  const h = el.parentElement.querySelector('.turn-group-header');
+  h.textContent = el.parentElement.classList.contains('collapsed') ? '▶ 执行过程' : '▼ 执行过程';
+}
+
 function addMsg(type, text) {
   const div = document.createElement('div');
   div.className = 'msg msg-' + type;
-  div.textContent = text;
+  if (type === 'assistant') {
+    div.innerHTML = renderMarkdown(text);
+  } else {
+    div.textContent = text;
+  }
   thread.appendChild(div);
   scrollToBottom();
   lastAssistant = null;
+  currentTurnGroup = null;
 }
 function appendAssistant(text) {
   if (!lastAssistant) {
@@ -354,20 +408,23 @@ function appendAssistant(text) {
     thread.appendChild(div);
     lastAssistant = div;
   }
-  lastAssistant.textContent += text;
+  lastAssistant.dataset.raw = (lastAssistant.dataset.raw || '') + text;
+  lastAssistant.innerHTML = renderMarkdown(lastAssistant.dataset.raw);
   scrollToBottom();
 }
 function appendThinking(text) {
-  let t = thread.querySelector('.msg-thinking:last-child');
+  const turnGroup = ensureTurnGroup();
+  const body = turnGroup.querySelector('.turn-group-body');
+  let t = body.querySelector('.msg-thinking:last-child');
   if (!t || t.dataset.folded === 'closed') {
     t = document.createElement('div');
     t.className = 'msg msg-thinking';
     t.dataset.folded = 'open';
     t.innerHTML = '<div class="thinking-header" style="cursor:pointer;user-select:none" onclick="toggleThinking(this.parentElement);event.stopPropagation()">▶ 思考中…</div><div class="thinking-body" style="display:none;margin-top:4px"></div>';
-    thread.appendChild(t);
+    body.appendChild(t);
   }
-  const body = t.querySelector('.thinking-body');
-  if (body) body.textContent += text;
+  const tb = t.querySelector('.thinking-body');
+  if (tb) tb.textContent += text;
   scrollToBottom();
 }
 function toggleThinking(el) {
@@ -392,7 +449,12 @@ function addToolRow(name, args, status, id) {
     '<span class="tool-name">' + name + '</span>' +
     '<span class="tool-ok">' + statusIcon + '</span></div>' +
     '<div class="tool-row-body">' + (typeof args === 'string' ? args : JSON.stringify(args, null, 2)) + '</div>';
-  thread.appendChild(div);
+  // 如果存在 turn group，工具行加入组内；否则直接加入 thread
+  if (currentTurnGroup && document.body.contains(currentTurnGroup)) {
+    currentTurnGroup.querySelector('.turn-group-body').appendChild(div);
+  } else {
+    thread.appendChild(div);
+  }
   scrollToBottom();
 }
 function updateToolRow(id, status, result) {
