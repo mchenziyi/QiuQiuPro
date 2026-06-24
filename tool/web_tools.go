@@ -22,6 +22,9 @@ func stripHTML(s string) string {
 	return regexp.MustCompile(`\n[ \t]*\n([ \t]*\n)+`).ReplaceAllString(s, "\n\n")
 }
 
+// 包级别复用 HTTP 客户端（连接池复用 + 默认超时）
+var httpClient = &http.Client{Timeout: 15 * time.Second}
+
 func NewWebFetchTool() Tool {
 	return Tool{
 		Name: "web_fetch", Description: "HTTP GET 抓取 URL", ReadOnly: true,
@@ -36,13 +39,12 @@ func NewWebFetchTool() Tool {
 			if p.URL == "" {
 				return "", fmt.Errorf("url required")
 			}
-			client := &http.Client{Timeout: 15 * time.Second}
 			req, err := http.NewRequestWithContext(ctx, "GET", p.URL, nil)
 			if err != nil {
 				return "", fmt.Errorf("request: %v", err)
 			}
 			req.Header.Set("User-Agent", "QiuQiuPro/1.0")
-			resp, err := client.Do(req)
+			resp, err := httpClient.Do(req)
 			if err != nil {
 				return "", fmt.Errorf("fetch: %v", err)
 			}

@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"sync"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -16,6 +17,7 @@ const apiEmptyContentPlaceholder = "ok"
 // 在 BuildRequest 时前置），这样历史保持为纯对话，便于裁剪与持久化。
 // 把这些从 Agent 里拆出来，让「消息日志怎么攒、怎么裁、怎么存档」聚到一处。
 type Session struct {
+	mu                sync.RWMutex
 	ID                string
 	messages          []openai.ChatCompletionMessage
 	maxMessages       int
@@ -29,18 +31,32 @@ func NewSession(id string) *Session {
 
 // Add 追加一条消息（append-only，永不删——体积由 Trim 控制）。
 func (s *Session) Add(msg openai.ChatCompletionMessage) {
+	s.mu.Lock()
 	s.messages = append(s.messages, msg)
+	s.mu.Unlock()
 }
 
 // Messages 返回对话历史（只读用途，调用方不应修改返回值）。
-func (s *Session) Messages() []openai.ChatCompletionMessage { return s.messages }
+func (s *Session) Messages() []openai.ChatCompletionMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	out := make([]openai.ChatCompletionMessage, len(s.messages))
+	copy(out, s.messages)
+	return out
+}
 
 // Len 返回历史消息条数。
-func (s *Session) Len() int { return len(s.messages) }
+func (s *Session) Len() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.messages)
+}
 
 // BuildRequest 组装一次 LLM 请求：system 提示词前置（非空时），其后接全量历史。
 // 不修改历史本身，因此可反复调用。
 func (s *Session) BuildRequest(sysPrompt string) []openai.ChatCompletionMessage {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	req := make([]openai.ChatCompletionMessage, 0, len(s.messages)+1)
 	if sysPrompt != "" {
 		req = append(req, openai.ChatCompletionMessage{Role: "system", Content: sysPrompt})
@@ -71,6 +87,8 @@ func ensureAPIContent(m openai.ChatCompletionMessage) openai.ChatCompletionMessa
 // 裁剪窗口绝不能以孤立的 tool 开头，否则它与对应 tool_call 失联、接口直接 400。
 // 因此裁剪后若开头是 tool，就继续向前丢弃，直到落在 user / assistant 上。
 func (s *Session) Trim() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if len(s.messages) <= s.maxMessages {
 		return
 	}
@@ -96,6 +114,8 @@ func msgChars(m openai.ChatCompletionMessage) int {
 
 // CharCount 返回历史全部消息的字符数之和，供调用方按真实用量推导「token/字符」系数。
 func (s *Session) CharCount() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	n := 0
 	for _, m := range s.messages {
 		n += msgChars(m)
@@ -110,6 +130,8 @@ func (s *Session) CharCount() int {
 // 按 token 而非条数对齐，从而压缩后体积可控、与触发判定一致。
 // 配对感知：保留段绝不以孤立 tool 开头，否则它与对应 tool_call 失联、接口直接 400。
 func (s *Session) SplitForCompaction(tailBudget int, tokPerChar float64) (old, recent []openai.ChatCompletionMessage) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	n := len(s.messages)
 	if n == 0 {
 		return nil, nil
@@ -138,6 +160,8 @@ func (s *Session) SplitForCompaction(tailBudget int, tokPerChar float64) (old, r
 // summary 非空时，前置一条 user 角色的摘要消息（无 tool_calls，不影响配对）；
 // summary 为空则退化为只保留近消息（等价一次裁剪）。
 func (s *Session) ApplyCompaction(summary string, recent []openai.ChatCompletionMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	msgs := make([]openai.ChatCompletionMessage, 0, len(recent)+1)
 	if summary != "" {
 		msgs = append(msgs, openai.ChatCompletionMessage{
@@ -150,12 +174,16 @@ func (s *Session) ApplyCompaction(summary string, recent []openai.ChatCompletion
 
 // Snapshot 把历史序列化为 JSON，用于存档 checkpoint。
 func (s *Session) Snapshot() (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	data, err := json.Marshal(s.messages)
 	return string(data), err
 }
 
 // Restore 用 JSON 覆盖历史，用于从 checkpoint 恢复。
 func (s *Session) Restore(messagesJSON string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var msgs []openai.ChatCompletionMessage
 	if err := json.Unmarshal([]byte(messagesJSON), &msgs); err != nil {
 		return err
@@ -166,6 +194,8 @@ func (s *Session) Restore(messagesJSON string) error {
 
 // Replace 用新历史整体替换（prune / compact 使用）。
 func (s *Session) Replace(msgs []openai.ChatCompletionMessage) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.messages = append([]openai.ChatCompletionMessage(nil), msgs...)
 }
 

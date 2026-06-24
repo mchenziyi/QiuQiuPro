@@ -62,7 +62,7 @@
 ## 🟢 内部质量
 
 - [ ] **`session.messages` 并发保护** — 加 RWMutex，防多 goroutine 并发写。
-- [ ] **`web_fetch` HTTP Client 复用** — 包级别复用 `http.Client`，减少连接浪费。
+- [x] **`web_fetch` HTTP Client 复用** — 包级别复用 `http.Client`，减少连接浪费。
 - [ ] **`event/store.go` 错误处理** — `Append()` / `Load()` 中忽略的错误。
 - [ ] **`SaveCheckpoint` 中 `session.Snapshot()` 错误被忽略**。
 - [ ] **文档旧工具名同步** — README / STRUCTURES / docs 中的旧工具名。

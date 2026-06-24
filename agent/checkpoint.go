@@ -8,8 +8,14 @@ import (
 // 检查点持久化：把会话历史序列化存档 / 从存档恢复（协调 Session 与 event.Store）。
 
 func (a *Agent) SaveCheckpoint() {
-	data, _ := a.session.Snapshot()
-	a.store.SaveCheckpoint(a.session.ID, a.lastEventID, data)
+	data, err := a.session.Snapshot()
+	if err != nil {
+		a.debugf("  ⚠️  快照序列化失败：%v\n", err)
+		return
+	}
+	if err := a.store.SaveCheckpoint(a.session.ID, a.lastEventID, data); err != nil {
+		a.debugf("  ⚠️  保存 checkpoint 失败：%v\n", err)
+	}
 }
 
 func (a *Agent) RestoreFromCheckpoint() bool {

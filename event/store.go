@@ -39,7 +39,9 @@ type Store struct {
 
 // NewStore 创建事件存储，目录不存在会自动创建
 func NewStore(dir string) *Store {
-	os.MkdirAll(dir, 0755)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		fmt.Printf("⚠️  创建存储目录失败 %s：%v\n", dir, err)
+	}
 	return &Store{dir: dir}
 }
 
@@ -51,8 +53,13 @@ func (s *Store) Append(sessionID string, e Event) error {
 		return err
 	}
 	defer f.Close()
-	data, _ := json.Marshal(e)
-	f.WriteString(string(data) + "\n")
+	data, err := json.Marshal(e)
+	if err != nil {
+		return fmt.Errorf("序列化事件失败：%v", err)
+	}
+	if _, err := f.WriteString(string(data) + "\n"); err != nil {
+		return fmt.Errorf("写入事件失败：%v", err)
+	}
 	return nil
 }
 
@@ -72,7 +79,9 @@ func (s *Store) Load(sessionID string) ([]Event, error) {
 			continue
 		}
 		var e Event
-		json.Unmarshal([]byte(line), &e)
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			continue // 跳过损坏的行
+		}
 		events = append(events, e)
 	}
 	return events, nil
@@ -112,7 +121,10 @@ func (s *Store) SaveCheckpoint(sessionID, lastEventID, messagesJSON string) erro
 		CreatedAt:    time.Now().Unix(),
 	}
 	path := fmt.Sprintf("%s/%s.ckpt", s.dir, sessionID)
-	data, _ := json.Marshal(cp)
+	data, err := json.Marshal(cp)
+	if err != nil {
+		return fmt.Errorf("序列化 checkpoint 失败：%v", err)
+	}
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return err
 	}
