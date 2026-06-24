@@ -139,7 +139,7 @@ func loopGuardBoundaryMessage(storm string) string {
 func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCall) ([]string, string) {
 	if a.takeInterrupt() {
 		atomic.StoreInt32(&a.interrupted, 1)
-		return []string{"操作已中断"}, ""
+		return []string{"canceled: 操作已中断"}, ""
 	}
 
 	results := make([]string, len(toolCalls))
@@ -237,9 +237,13 @@ func stormSignature(calls []openai.ToolCall, results []string) string {
 }
 
 func isErrorResult(r string) bool {
-	return strings.Contains(r, "失败") || strings.Contains(r, "❌") ||
-		strings.Contains(r, "error") || strings.Contains(r, "Error") ||
-		strings.Contains(r, "已拒绝")
+	// 结构化前缀匹配（可靠）
+	if strings.HasPrefix(r, "error:") || strings.HasPrefix(r, "timeout:") ||
+		strings.HasPrefix(r, "canceled:") || strings.HasPrefix(r, "❌") {
+		return true
+	}
+	// 关键词兜底（兼容第三方工具返回的未标准化错误）
+	return strings.Contains(r, "失败") || strings.Contains(r, "已拒绝")
 }
 
 func errorPrefix(r string) string {
@@ -289,7 +293,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 
 	hookCtx := a.toolHookContext(tc.Function.Name, tc.Function.Arguments)
 	if ok, reason := a.beforeToolHooks(hookCtx); !ok {
-		result := fmt.Sprintf("已拒绝执行 %s：%s", tc.Function.Name, reason)
+		result := fmt.Sprintf("blocked: 已拒绝执行 %s：%s", tc.Function.Name, reason)
 		a.noticef("  🚫 %s\n", result)
 		return result
 	}
@@ -300,14 +304,14 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 	}
 	switch decision, reason := gate.Check(tc.Function.Name, tc.Function.Arguments); decision {
 	case GateDeny:
-		result := fmt.Sprintf("已拒绝执行 %s：%s。请改用只读手段（如 read_file / grep / code_search）", tc.Function.Name, reason)
+		result := fmt.Sprintf("blocked: 已拒绝执行 %s：%s。请改用只读手段（如 read_file / grep / code_search）", tc.Function.Name, reason)
 		a.noticef("  🚫 %s\n", result)
 		return result
 	case GateConfirm:
 		a.debugf("  🔐 %s：%s(%s)\n", reason, tc.Function.Name, tc.Function.Arguments)
 		a.emitConfirmRequest(tc.Function.Name, tc.Function.Arguments, reason)
 		if !a.confirm() {
-			result := fmt.Sprintf("用户已取消执行 %s，请换一种方式", tc.Function.Name)
+			result := fmt.Sprintf("canceled: 用户已取消执行 %s", tc.Function.Name)
 			a.noticef("  🚫 %s\n", result)
 			return result
 		}
@@ -315,7 +319,7 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 
 	if a.takeInterrupt() {
 		atomic.StoreInt32(&a.interrupted, 1)
-		return fmt.Sprintf("用户已中断 %s", tc.Function.Name)
+		return fmt.Sprintf("canceled: 用户已中断 %s", tc.Function.Name)
 	}
 
 	// 工具执行超时：默认 60 秒，防止 MCP 工具卡死阻塞整个 Agent
@@ -324,12 +328,12 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 	result, execErr := t.Execute(execCtx, json.RawMessage(tc.Function.Arguments))
 	if execErr != nil {
 		if errors.Is(execErr, context.DeadlineExceeded) {
-			return fmt.Sprintf("❌ 工具 %s 执行超时（60s）", tc.Function.Name)
+			return fmt.Sprintf("timeout: 工具 %s 执行超时（60s）", tc.Function.Name)
 		}
 		if result != "" {
-			return fmt.Sprintf("%s\n%s", result, execErr.Error())
+			return fmt.Sprintf("error: %s\n%s", result, execErr.Error())
 		}
-		return execErr.Error()
+		return fmt.Sprintf("error: %s", execErr.Error())
 	}
 	return a.afterToolHooks(hookCtx, result)
 }
