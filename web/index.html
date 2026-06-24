@@ -99,6 +99,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .msg-user { color: var(--msg-user-color); margin-bottom: 6px; }
 .msg-thinking { background: var(--bg-surface); border-radius: 6px; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; margin-bottom: 6px; }
 .msg-assistant { background: var(--bg-surface); border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
+.msg-notice { background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 12px; margin-bottom: 6px; font-size: 12px; }
 .msg-assistant p { margin: 0 0 8px; }
 .msg-assistant p:last-child { margin-bottom: 0; }
 .msg-assistant strong { font-weight: 700; color: var(--text-primary); }
@@ -144,12 +145,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
       <button id="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
     <div id="thread"></div>
-    <div id="confirm-bar" style="display:none;margin:0 16px 8px;background:#282420;border-radius:6px;padding:8px 12px;font-size:12px;align-items:center;gap:8px">
-      <span style="color:#B8943C;font-weight:bold">⚠ 高危操作：</span>
-      <span id="confirm-tool" style="color:#E5E5EA;font-weight:bold"></span>
-      <span style="color:#8E8E93;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="confirm-desc"></span>
-      <button onclick="confirmAction(true)" style="background:#2C5F3A;color:#A0E0A0;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">批准</button>
-      <button onclick="confirmAction(false)" style="background:#3A3A3C;color:#8E8E93;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">拒绝</button>
+    <div id="confirm-bar" style="display:none;margin:0 16px 8px;background:#282420;border-radius:6px;padding:8px 12px;font-size:12px;flex-direction:column;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px;width:100%">
+        <span style="color:#B8943C;font-weight:bold">⚠ 高危操作：</span>
+        <span id="confirm-tool" style="color:#E5E5EA;font-weight:bold"></span>
+        <span style="color:#8E8E93;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="confirm-desc"></span>
+        <button onclick="confirmAction(true)" style="background:#2C5F3A;color:#A0E0A0;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer;margin-left:auto">批准</button>
+        <button onclick="confirmAction(false)" style="background:#3A3A3C;color:#8E8E93;border:none;border-radius:4px;padding:4px 14px;font-size:12px;cursor:pointer">拒绝</button>
+      </div>
+      <div id="confirm-steps" style="display:none;border-top:1px solid #3A3A3C;padding-top:6px;font-size:11px;color:#E5E5EA"></div>
     </div>
     <div id="composer">
       <input id="composer-input" type="text" placeholder="输入消息，或 /command..." autofocus>
@@ -238,11 +242,23 @@ let pendingConfirm = null;
 const confirmBar = document.getElementById('confirm-bar');
 const confirmTool = document.getElementById('confirm-tool');
 const confirmDesc = document.getElementById('confirm-desc');
+const confirmSteps = document.getElementById('confirm-steps');
 evtSource.addEventListener('confirm_request', e => {
   const d = safeParseSSE(e); if (!d) return;
   pendingConfirm = d;
   confirmTool.textContent = d.tool_name;
   confirmDesc.textContent = typeof d.arguments === 'string' ? d.arguments : JSON.stringify(d.arguments);
+  // 如果有方案步骤，展示在确认栏中
+  if (d.steps && d.steps.length > 0) {
+    let stepsHtml = '<div style="font-weight:bold;margin-bottom:4px;color:#B8943C">📋 执行步骤：</div>';
+    d.steps.forEach((s, i) => {
+      stepsHtml += '<div style="padding:2px 0">' + (i+1) + '. ' + escapeHtml(s.desc || '') + '</div>';
+    });
+    confirmSteps.innerHTML = stepsHtml;
+    confirmSteps.style.display = 'block';
+  } else {
+    confirmSteps.style.display = 'none';
+  }
   confirmBar.style.display = 'flex';
 });
 // Plan 方案展示
@@ -250,6 +266,7 @@ evtSource.addEventListener('plan_proposal', e => {
   const d = safeParseSSE(e); if (!d) return;
   const plan = d.plan || {};
   const steps = plan.steps || [];
+  // 在右侧面板展示详细方案
   let html = '<div style="font-size:13px;font-weight:bold;color:var(--text-primary);margin-bottom:8px">📋 方案</div>';
   html += '<div style="font-size:11px;color:var(--text-secondary);margin-bottom:8px">目标: ' + escapeHtml(plan.goal || '') + '</div>';
   steps.forEach((s, i) => {
@@ -260,10 +277,22 @@ evtSource.addEventListener('plan_proposal', e => {
     html += '<div style="margin-top:8px;font-size:11px;color:var(--text-secondary);white-space:pre-wrap">' + escapeHtml(d.research) + '</div>';
   }
   document.getElementById('inspector-content').innerHTML = html;
+  // 同时在 thread 中展示方案摘要，让用户一眼看到
+  let threadHtml = '<div style="font-weight:bold;color:var(--text-primary);margin-bottom:4px">📋 方案已生成，请审批</div>';
+  threadHtml += '<div style="color:var(--text-secondary);margin-bottom:4px">目标：' + escapeHtml(plan.goal || '') + '</div>';
+  steps.forEach((s, i) => {
+    threadHtml += '<div style="padding:2px 0;color:var(--text-primary)">' + (i+1) + '. ' + escapeHtml(s.desc || s.Desc || '') + '</div>';
+  });
+  const planDiv = document.createElement('div');
+  planDiv.className = 'msg msg-notice';
+  planDiv.innerHTML = threadHtml;
+  thread.appendChild(planDiv);
+  scrollToBottom();
 });
 function confirmAction(approve) {
   pendingConfirm = null;
   confirmBar.style.display = 'none';
+  confirmSteps.style.display = 'none';
   document.getElementById('inspector-content').textContent = approve ? '✅ 已批准' : '❌ 已拒绝';
   fetch('/api/confirm', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({approve}) });
 }

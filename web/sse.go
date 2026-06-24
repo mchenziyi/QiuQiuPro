@@ -391,14 +391,25 @@ func (s *Server) runPlanFlow(goal string) {
 		planGoal = goal + "\n\n调研摘要（供规划参考）：\n" + research
 	}
 
-	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "📋 正在生成执行计划..."}}.Marshal())
+	// 进度：规划阶段（GeneratePlan 是非流式调用，阻塞期间无反馈）
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "⏳ 正在生成执行计划（约 5-15 秒）..."}}.Marshal())
 	plan, err := s.agent.GeneratePlan(ctx, planGoal)
 	if err != nil {
 		s.sink.Broadcast(SSEEvent{Type: "error", Data: map[string]string{"text": "规划失败: " + err.Error()}}.Marshal())
 		s.agent.SetPlanMode(false)
 		return
 	}
+	s.sink.Broadcast(SSEEvent{Type: "notice", Data: map[string]string{"text": "🔍 正在审查方案..."}}.Marshal())
 	plan, _ = s.agent.ReviewPlan(ctx, plan)
+
+	// 提取步骤摘要用于确认框
+	stepSummaries := make([]map[string]interface{}, 0, len(plan.Steps))
+	for _, s := range plan.Steps {
+		stepSummaries = append(stepSummaries, map[string]interface{}{
+			"id":   s.ID,
+			"desc": s.Desc,
+		})
+	}
 
 	// 展示方案，等待用户审批
 	s.sink.Broadcast(SSEEvent{Type: "plan_proposal", Data: map[string]interface{}{
@@ -406,11 +417,12 @@ func (s *Server) runPlanFlow(goal string) {
 		"plan":     plan,
 	}}.Marshal())
 
-	// 发送确认请求
+	// 发送确认请求（带上步骤摘要供前端展示）
 	s.sink.Broadcast(SSEEvent{Type: "confirm_request", Data: map[string]interface{}{
 		"tool_name": "plan_execution",
 		"arguments": "批准执行此方案",
 		"reason":    "方案确定后将开始执行各步骤",
+		"steps":     stepSummaries,
 	}}.Marshal())
 
 	// 等待审批
