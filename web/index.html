@@ -137,11 +137,13 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
     <div id="statusbar">
       <span class="brand">● 球球</span>
       <span class="status-item" id="st-mode" style="cursor:pointer" title="点击切换 ask/plan">ask</span>
+      <span id="st-planmode" style="display:none;color:var(--yellow-text);font-size:11px"> 🔒 只读</span>
       <span class="status-item" id="st-skill">全栈开发</span>
       <span class="status-item" id="st-session">—</span>
       <span class="status-item" id="st-tokens">↑0 ↓0</span>
       <span class="status-item" id="st-cache">● 0%</span>
       <span id="st-running" style="color:var(--green);display:none">● 运行中</span>
+      <button id="tools-toggle" onclick="loadTools()" title="查看可用工具" style="background:none;border:1px solid var(--border-color);border-radius:4px;color:var(--text-secondary);font-size:10px;padding:2px 6px;cursor:pointer;margin-right:4px">🔧</button>
       <button id="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
     <div id="thread"></div>
@@ -214,6 +216,9 @@ evtSource.addEventListener('state', e => {
   document.getElementById('st-mode').onclick = function() { toggleMode(d.mode); };
   // mode 切换锁复位（state 到达说明上次切换已完成）
   modeChanging = false;
+  // plan_mode 只读标记
+  const pm = document.getElementById('st-planmode');
+  pm.style.display = d.plan_mode ? 'inline' : 'none';
   document.getElementById('st-skill').textContent = d.skill;
   document.getElementById('st-session').textContent = d.session_id;
   document.getElementById('st-tokens').textContent = '↑' + d.cache_hit + ' ↓' + d.cache_miss;
@@ -632,6 +637,21 @@ function stopRun() {
   btn.textContent = '停止中…';
   btn.onclick = null;
   fetch('/api/interrupt', { method: 'POST' });
+}
+function loadTools() {
+  fetch('/api/tools').then(r => r.json()).then(tools => {
+    const insp = document.getElementById('inspector-content');
+    let html = '<div style="font-size:13px;font-weight:bold;color:var(--text-primary);margin-bottom:8px">🔧 可用工具 (' + tools.length + ')</div>';
+    tools.forEach(t => {
+      const badge = t.read_only ? '<span style="color:var(--green-text);font-size:10px">[只读]</span>' : '<span style="color:var(--yellow-text);font-size:10px">[写]</span>';
+      html += '<div style="background:var(--bg-surface);padding:6px 10px;border-radius:4px;margin-bottom:4px;font-size:12px">' +
+        '<div style="color:var(--text-primary);font-weight:bold">' + badge + ' ' + escapeHtml(t.name) + '</div>' +
+        '<div style="color:var(--text-secondary);font-size:11px;margin-top:2px">' + escapeHtml(t.description) + '</div></div>';
+    });
+    insp.innerHTML = html;
+  }).catch(() => {
+    document.getElementById('inspector-content').textContent = '❌ 加载工具列表失败';
+  });
 }
 function toggleMode(current) {
   if (modeChanging) return;

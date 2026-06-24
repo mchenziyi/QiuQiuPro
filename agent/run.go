@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	openai "github.com/sashabaranov/go-openai"
 )
@@ -317,8 +318,14 @@ func (a *Agent) executeToolCall(ctx context.Context, tc openai.ToolCall) string 
 		return fmt.Sprintf("用户已中断 %s", tc.Function.Name)
 	}
 
-	result, execErr := t.Execute(ctx, json.RawMessage(tc.Function.Arguments))
+	// 工具执行超时：默认 60 秒，防止 MCP 工具卡死阻塞整个 Agent
+	execCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	result, execErr := t.Execute(execCtx, json.RawMessage(tc.Function.Arguments))
 	if execErr != nil {
+		if errors.Is(execErr, context.DeadlineExceeded) {
+			return fmt.Sprintf("❌ 工具 %s 执行超时（60s）", tc.Function.Name)
+		}
 		if result != "" {
 			return fmt.Sprintf("%s\n%s", result, execErr.Error())
 		}
