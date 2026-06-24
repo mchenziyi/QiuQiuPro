@@ -620,6 +620,7 @@ function escapeHtml(s) {
 
 // mode 切换防抖锁，防止快速点击导致状态不同步
 let modeChanging = false;
+let modeChangeTimeout = null;
 
 function sendMsg() {
   const text = input.value.trim();
@@ -638,7 +639,8 @@ function toggleMode(current) {
   const target = current === 'ask' ? '/mode plan' : '/mode ask';
   fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text: target}) });
   // 兜底解锁：2 秒后自动释放，防止 state 事件丢失导致锁死
-  setTimeout(() => { modeChanging = false; }, 2000);
+  clearTimeout(modeChangeTimeout);
+  modeChangeTimeout = setTimeout(() => { modeChanging = false; }, 2000);
 }
 btn.onclick = sendMsg;
 input.addEventListener('keydown', e => {
