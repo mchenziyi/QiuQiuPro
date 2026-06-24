@@ -99,6 +99,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helve
 .msg-user { color: var(--msg-user-color); margin-bottom: 6px; }
 .msg-thinking { background: var(--bg-surface); border-radius: 6px; padding: 8px 12px; color: var(--text-secondary); font-size: 12px; margin-bottom: 6px; }
 .msg-assistant { background: var(--bg-surface); border-radius: 6px; padding: 10px 14px; font-size: 12px; line-height: 1.6; margin-bottom: 8px; }
+.msg-assistant p { margin: 0 0 8px; }
+.msg-assistant p:last-child { margin-bottom: 0; }
+.msg-assistant strong { font-weight: 700; color: var(--text-primary); }
+.msg-assistant code { font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Consolas', monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; color: var(--accent-text); }
+.msg-assistant pre { background: var(--code-bg); border: 1px solid var(--border-color); border-radius: 4px; padding: 10px 12px; overflow-x: auto; margin: 8px 0; }
+.msg-assistant pre code { background: none; padding: 0; border-radius: 0; font-size: 11px; color: var(--text-secondary); border: none; }
+.msg-assistant h2, .msg-assistant h3, .msg-assistant h4 { color: var(--text-primary); margin: 10px 0 4px; font-weight: 700; }
+.msg-assistant h2 { font-size: 14px; }
+.msg-assistant h3 { font-size: 13px; }
+.msg-assistant h4 { font-size: 12px; }
+.msg-assistant ul { margin: 4px 0; padding-left: 20px; }
+.msg-assistant li { margin-bottom: 2px; }
+.msg-assistant hr { border: none; border-top: 1px solid var(--border-color); margin: 8px 0; }
 .tool-row { background: var(--bg-surface); border-radius: 6px; margin-bottom: 4px; font-size: 12px; cursor: pointer; overflow: hidden; }
 .tool-row-header { display: flex; align-items: center; padding: 6px 10px; }
 .tool-row-body { display: none; padding: 0 10px 8px; font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--border-color); margin-top: 0; padding-top: 6px; white-space: pre-wrap; word-break: break-all; }
@@ -155,6 +168,7 @@ const btn = document.getElementById('composer-btn');
 const evtSource = new EventSource('/api/events');
 
 function safeParseSSE(e) { try { return JSON.parse(e.data); } catch(ex) { return null; } }
+function scrollToBottom() { thread.scrollTop = thread.scrollHeight; }
 
 evtSource.addEventListener('user_message', e => {
   const d = safeParseSSE(e); if (!d) return;
@@ -327,10 +341,30 @@ fetch('/api/history').then(r => r.json()).then(msgs => {
     if (m.role === 'user') {
       addMsg('user', '> ' + m.content);
     } else if (m.role === 'assistant') {
+      // 先渲染 reasoning/thinking 内容（如果有）
+      if (m.reasoning_content) {
+        appendThinking(m.reasoning_content);
+        // 标记为已完成的思考过程，保持内容可见
+        const turnGroup = ensureTurnGroup();
+        const lastThinking = turnGroup.querySelector('.msg-thinking:last-child');
+        if (lastThinking) {
+          const header = lastThinking.querySelector('.thinking-header');
+          if (header) header.textContent = '▼ 思考过程';
+          lastThinking.dataset.folded = 'open';
+        }
+      }
+      // 再渲染工具调用（如果有）
+      if (m.tool_calls && m.tool_calls.length > 0) {
+        m.tool_calls.forEach(tc => {
+          addToolRow(tc.name, tc.arguments, '✓', tc.id);
+        });
+        // 历史加载时默认折叠执行过程组
+        if (currentTurnGroup) currentTurnGroup.classList.add('collapsed');
+      }
+      // 最后渲染文本内容
       if (m.content) addMsg('assistant', m.content);
     } else if (m.role === 'tool') {
-      const name = m.tool || m.name || '';
-      addToolRow(name, m.content || '', '✓', '');
+      updateToolRow(m.tool_call_id || '', '✓', m.content || '');
     }
   });
 });
@@ -383,9 +417,9 @@ function ensureTurnGroup() {
   return currentTurnGroup;
 }
 function toggleTurnGroup(el) {
-  el.parentElement.classList.toggle('collapsed');
-  const h = el.parentElement.querySelector('.turn-group-header');
-  h.textContent = el.parentElement.classList.contains('collapsed') ? '▶ 执行过程' : '▼ 执行过程';
+  el.classList.toggle('collapsed');
+  const h = el.querySelector('.turn-group-header');
+  h.textContent = el.classList.contains('collapsed') ? '▶ 执行过程' : '▼ 执行过程';
 }
 
 function addMsg(type, text) {
@@ -398,8 +432,11 @@ function addMsg(type, text) {
   }
   thread.appendChild(div);
   scrollToBottom();
-  lastAssistant = null;
-  currentTurnGroup = null;
+  // notice 不打断当前 turn-group（如 Plan 模式的进度提示），只有新轮次才重置
+  if (type !== 'notice') {
+    lastAssistant = null;
+    currentTurnGroup = null;
+  }
 }
 function appendAssistant(text) {
   if (!lastAssistant) {
@@ -449,12 +486,9 @@ function addToolRow(name, args, status, id) {
     '<span class="tool-name">' + name + '</span>' +
     '<span class="tool-ok">' + statusIcon + '</span></div>' +
     '<div class="tool-row-body">' + (typeof args === 'string' ? args : JSON.stringify(args, null, 2)) + '</div>';
-  // 如果存在 turn group，工具行加入组内；否则直接加入 thread
-  if (currentTurnGroup && document.body.contains(currentTurnGroup)) {
-    currentTurnGroup.querySelector('.turn-group-body').appendChild(div);
-  } else {
-    thread.appendChild(div);
-  }
+  // 始终放入 turn-group（没有则创建），保证工具调用有折叠组包裹
+  const turnGroup = ensureTurnGroup();
+  turnGroup.querySelector('.turn-group-body').appendChild(div);
   scrollToBottom();
 }
 function updateToolRow(id, status, result) {

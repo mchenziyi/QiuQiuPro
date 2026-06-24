@@ -44,7 +44,8 @@ type Agent struct {
 	Quiet            bool        // true 时隐藏中间日志
 	Mode             string      // 运行模式："plan"（规划执行）| "ask"（直接问答）
 	planMode         atomic.Bool // true=只读调研模式，写工具被拒绝
-	toolCallCount    int
+	toolCallCount       int
+	toolCallSSEEmitted  bool   // 本轮 streamChat 是否已 emit tool_call（防 dispatchAndDetect 双发）
 	in               *bufio.Reader // 统一的标准输入读取器（主循环 + 确认 + API Key 共用，避免混用）
 	gate             Gate          // 权限门：裁决每次工具调用（放行 / 确认 / 拒绝），可插拔
 	sink             Sink          // 输出去向：把运行事件渲染到控制台 / UI / 测试捕获，可插拔

@@ -42,6 +42,8 @@ func (a *Agent) Run(ctx context.Context, userInput string) (string, error) {
 		}
 		curShape := a.capturePrefixShape()
 
+		a.toolCallSSEEmitted = false // 重置每轮工具调用标志
+
 		msg, usage, err := a.streamChat(ctx, a.session.BuildRequest(a.BuildSystemPrompt()))
 		if errors.Is(err, ErrInterrupted) {
 			return "", a.abortRun(sessionStart)
@@ -143,7 +145,9 @@ func (a *Agent) dispatchAndDetect(ctx context.Context, toolCalls []openai.ToolCa
 
 	for _, tc := range toolCalls {
 		a.recordEvent("tool_call", tc.Function.Arguments, tc.Function.Name)
-		a.emitToolCall(tc.Function.Name, tc.Function.Arguments, tc.ID)
+		if !a.toolCallSSEEmitted {
+			a.emitToolCall(tc.Function.Name, tc.Function.Arguments, tc.ID)
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -414,8 +418,9 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 	}
 
 	msg := openai.ChatCompletionMessage{
-		Role:    "assistant",
-		Content: content,
+		Role:             "assistant",
+		Content:          content,
+		ReasoningContent: reasoning,
 	}
 
 	if len(toolCallAcc) > 0 {
@@ -425,6 +430,11 @@ func (a *Agent) streamChat(ctx context.Context, messages []openai.ChatCompletion
 				msg.ToolCalls = append(msg.ToolCalls, tc)
 			}
 		}
+		// 在返回之前 emit tool_call，确保前端先看到工具调用再看到工具执行结果
+		for _, tc := range msg.ToolCalls {
+			a.emitToolCall(tc.Function.Name, tc.Function.Arguments, tc.ID)
+		}
+		a.toolCallSSEEmitted = true
 	}
 
 	return msg, usage, nil

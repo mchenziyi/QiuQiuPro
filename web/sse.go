@@ -584,15 +584,35 @@ func (s *Server) handleSessionNew(w http.ResponseWriter, r *http.Request) {
 // GET /api/history — 获取当前会话消息列表
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	msgs := s.agent.SessionMessages()
+	type ToolCallInfo struct {
+		ID        string `json:"id"`
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	}
 	type Msg struct {
-		Role    string `json:"role"`
-		Content string `json:"content"`
-		Tool    string `json:"tool,omitempty"`
+		Role             string         `json:"role"`
+		Content          string         `json:"content"`
+		ReasoningContent string         `json:"reasoning_content,omitempty"`
+		Tool             string         `json:"tool,omitempty"`
+		ToolCallID       string         `json:"tool_call_id,omitempty"`
+		ToolCalls        []ToolCallInfo `json:"tool_calls,omitempty"`
 	}
 	var out []Msg = make([]Msg, 0)
 	for _, m := range msgs {
 		if m.Role == "user" || m.Role == "assistant" || m.Role == "tool" {
-			out = append(out, Msg{Role: m.Role, Content: m.Content, Tool: m.Name})
+			msg := Msg{
+				Role:             m.Role,
+				Content:          m.Content,
+				ReasoningContent: m.ReasoningContent,
+				Tool:             m.Name,
+				ToolCallID:       m.ToolCallID,
+			}
+			for _, tc := range m.ToolCalls {
+				msg.ToolCalls = append(msg.ToolCalls, ToolCallInfo{
+					ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments,
+				})
+			}
+			out = append(out, msg)
 		}
 	}
 	w.Header().Set("Content-Type", "application/json")
