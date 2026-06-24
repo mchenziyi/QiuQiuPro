@@ -212,6 +212,8 @@ evtSource.addEventListener('state', e => {
   const d = safeParseSSE(e); if (!d) return;
   document.getElementById('st-mode').textContent = d.mode;
   document.getElementById('st-mode').onclick = function() { toggleMode(d.mode); };
+  // mode 切换锁复位（state 到达说明上次切换已完成）
+  modeChanging = false;
   document.getElementById('st-skill').textContent = d.skill;
   document.getElementById('st-session').textContent = d.session_id;
   document.getElementById('st-tokens').textContent = '↑' + d.cache_hit + ' ↓' + d.cache_miss;
@@ -616,6 +618,9 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
+// mode 切换防抖锁，防止快速点击导致状态不同步
+let modeChanging = false;
+
 function sendMsg() {
   const text = input.value.trim();
   if (!text) return;
@@ -628,8 +633,12 @@ function stopRun() {
   fetch('/api/interrupt', { method: 'POST' });
 }
 function toggleMode(current) {
+  if (modeChanging) return;
+  modeChanging = true;
   const target = current === 'ask' ? '/mode plan' : '/mode ask';
   fetch('/api/send', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({text: target}) });
+  // 兜底解锁：2 秒后自动释放，防止 state 事件丢失导致锁死
+  setTimeout(() => { modeChanging = false; }, 2000);
 }
 btn.onclick = sendMsg;
 input.addEventListener('keydown', e => {
